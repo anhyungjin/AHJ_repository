@@ -538,10 +538,12 @@ function CityItinerarySection({
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const [selectedCityIds, setSelectedCityIds] = useState<string[] | null>(null);
-  const [dialysisAddresses, setDialysisAddresses] = useState<Record<string, string>>({});
+  const [lodgingAddresses, setLodgingAddresses] = useState<Record<string, string>>({});
   const [dialysisSearch, setDialysisSearch] = useState<
     Record<string, { loading: boolean; error: string | null; hospitals: HospitalResult[] | null }>
   >({});
+  const [personalizedSpots, setPersonalizedSpots] = useState<Record<string, CityInfo["spots"] | null>>({});
+  const [personalizeState, setPersonalizeState] = useState<Record<string, { loading: boolean; error: string | null }>>({});
 
   const loadCities = async () => {
     try {
@@ -632,7 +634,10 @@ function CityItinerarySection({
   };
 
   const chosenCities = cities.filter((c) => effectiveSelectedIds.includes(c.id));
-  const allocations = allocateCities(chosenCities, nights);
+  const citiesForItinerary = chosenCities.map((c) =>
+    personalizedSpots[c.id] ? { ...c, spots: personalizedSpots[c.id]! } : c
+  );
+  const allocations = allocateCities(citiesForItinerary, nights);
   const itinerary = buildItinerary(allocations);
   const droppedCityCount = chosenCities.length - allocations.length;
 
@@ -659,7 +664,7 @@ function CityItinerarySection({
   }
 
   const handleDialysisSearch = async (cityId: string, cityNameEn: string) => {
-    const address = dialysisAddresses[cityId];
+    const address = lodgingAddresses[cityId];
     if (!address) return;
     setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: true, error: null, hospitals: null } }));
     try {
@@ -684,6 +689,36 @@ function CityItinerarySection({
           ? "응답이 너무 오래 걸려 중단했습니다. 잠시 후 다시 시도해주세요."
           : "검색 중 오류가 발생했습니다.";
       setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: message, hospitals: null } }));
+    }
+  };
+
+  const handlePersonalizeItinerary = async (cityId: string, cityNights: number) => {
+    const address = lodgingAddresses[cityId];
+    if (!address) return;
+    setPersonalizeState((prev) => ({ ...prev, [cityId]: { loading: true, error: null } }));
+    try {
+      const res = await fetchWithTimeout(
+        `/api/cities/${cityId}/nearby-itinerary`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, nights: cityNights }),
+        },
+        55000
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setPersonalizeState((prev) => ({ ...prev, [cityId]: { loading: false, error: data.error ?? "일정을 다시 짜지 못했습니다." } }));
+      } else {
+        setPersonalizedSpots((prev) => ({ ...prev, [cityId]: data.spots }));
+        setPersonalizeState((prev) => ({ ...prev, [cityId]: { loading: false, error: null } }));
+      }
+    } catch (e) {
+      const message =
+        e instanceof Error && e.name === "AbortError"
+          ? "응답이 너무 오래 걸려 중단했습니다. 잠시 후 다시 시도해주세요."
+          : "일정을 다시 짜는 중 오류가 발생했습니다.";
+      setPersonalizeState((prev) => ({ ...prev, [cityId]: { loading: false, error: message } }));
     }
   };
 
@@ -815,28 +850,63 @@ function CityItinerarySection({
           {cityStays.map(({ allocation, checkIn, checkOut }) => {
             const cityQuery = `${allocation.city.nameEn}, ${country.nameEn}`;
             const searchInput = { cityQuery, checkIn, checkOut, adults, breakfastOnly, priceTier };
+            const cityId = allocation.city.id;
+            const pState = personalizeState[cityId];
+            const hasPersonalized = Boolean(personalizedSpots[cityId]);
             return (
-              <div key={allocation.city.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 p-3">
-                <span className="text-sm text-neutral-700">
-                  {allocation.city.nameKo} ({checkIn} ~ {checkOut}, {allocation.nights}박)
-                </span>
-                <div className="flex gap-2">
-                  <a
-                    href={buildBookingUrl(searchInput)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50"
-                  >
-                    부킹닷컴 →
-                  </a>
-                  <a
-                    href={buildAgodaUrl(searchInput)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50"
-                  >
-                    아고다 →
-                  </a>
+              <div key={cityId} className="rounded-lg border border-neutral-200 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="text-sm text-neutral-700">
+                    {allocation.city.nameKo} ({checkIn} ~ {checkOut}, {allocation.nights}박)
+                  </span>
+                  <div className="flex gap-2">
+                    <a
+                      href={buildBookingUrl(searchInput)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50"
+                    >
+                      부킹닷컴 →
+                    </a>
+                    <a
+                      href={buildAgodaUrl(searchInput)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50"
+                    >
+                      아고다 →
+                    </a>
+                  </div>
+                </div>
+
+                <div className="mt-2 border-t border-neutral-100 pt-2">
+                  <p className="text-xs text-neutral-500">
+                    실제 예약한 숙소를 입력하면, 위 &quot;도시 선정 및 일정&quot;의 {allocation.city.nameKo} 일정을 이 숙소에서
+                    도보·대중교통 30~40분 이내로 갈 수 있는 곳 위주로 다시 짭니다.
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <input
+                      type="text"
+                      placeholder="숙소 이름 또는 주소 (예: Hotel Gracery Shinjuku, Tokyo)"
+                      value={lodgingAddresses[cityId] ?? ""}
+                      onChange={(e) => setLodgingAddresses((prev) => ({ ...prev, [cityId]: e.target.value }))}
+                      className="min-w-[240px] flex-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handlePersonalizeItinerary(cityId, allocation.nights)}
+                      disabled={!lodgingAddresses[cityId] || pState?.loading}
+                      className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {pState?.loading ? "일정 다시 짜는 중..." : "숙소 기준으로 일정 다시 짜기"}
+                    </button>
+                  </div>
+                  {pState?.error && <p className="mt-1 text-xs text-red-600">{pState.error}</p>}
+                  {hasPersonalized && !pState?.error && (
+                    <p className="mt-1 text-xs text-emerald-700">
+                      ✓ {allocation.city.nameKo} 일정이 이 숙소 기준으로 반영되었습니다. 위로 스크롤해서 확인해보세요.
+                    </p>
+                  )}
                 </div>
               </div>
             );
@@ -851,8 +921,8 @@ function CityItinerarySection({
         <div className="mt-6 border-t border-neutral-200 pt-4">
           <h3 className="text-sm font-semibold text-neutral-800">숙소 근처 투석병원 찾기</h3>
           <p className="mt-1 text-xs text-neutral-500">
-            위에서 예약하신 실제 숙소의 이름/주소를 입력하면, 투석이 필요한 날짜에 머무는 숙소 기준으로 가장 가까운 병원을
-            찾아드립니다.
+            위 &quot;숙소 확인하기&quot;에 입력하신 숙소 이름/주소를 그대로 사용해, 투석이 필요한 날짜에 머무는 숙소 기준으로
+            가장 가까운 병원을 찾아드립니다.
           </p>
           <div className="mt-3 space-y-4">
             {cityStays
@@ -860,24 +930,21 @@ function CityItinerarySection({
               .map(({ allocation }) => {
                 const cityId = allocation.city.id;
                 const search = dialysisSearch[cityId];
+                const address = lodgingAddresses[cityId];
                 return (
                   <div key={cityId} className="rounded-lg border border-neutral-200 p-3">
                     <p className="text-sm font-medium text-neutral-800">
                       {allocation.city.nameKo} 숙소 — 투석 필요일:{" "}
                       {dialysisDatesByCity[cityId].map((d) => `${d}(${WEEKDAYS.find((w) => w.code === weekdayCode(d))?.label})`).join(", ")}
                     </p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <input
-                        type="text"
-                        placeholder="숙소 이름 또는 주소 (예: Hotel Gracery Shinjuku, Tokyo)"
-                        value={dialysisAddresses[cityId] ?? ""}
-                        onChange={(e) => setDialysisAddresses((prev) => ({ ...prev, [cityId]: e.target.value }))}
-                        className="min-w-[240px] flex-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
-                      />
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-neutral-600">
+                        숙소: {address ? address : <span className="text-amber-600">위 숙소 확인하기에서 먼저 입력해주세요</span>}
+                      </span>
                       <button
                         type="button"
                         onClick={() => handleDialysisSearch(cityId, allocation.city.nameEn)}
-                        disabled={!dialysisAddresses[cityId] || search?.loading}
+                        disabled={!address || search?.loading}
                         className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
                       >
                         {search?.loading ? "검색 중..." : "근처 투석병원 찾기"}
