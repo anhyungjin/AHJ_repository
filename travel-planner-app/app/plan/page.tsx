@@ -28,6 +28,17 @@ function addDays(ymd: string, days: number): string {
 
 const ADULT_OPTIONS = [1, 2, 3, 4, 5, 6];
 
+/** AI 웹검색 기반 API는 오래 걸릴 수 있어, 일정 시간 넘으면 명확한 에러로 끝내기 위한 fetch 래퍼 */
+async function fetchWithTimeout(input: RequestInfo, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 const WEEKDAY_CODE_BY_JS_DAY = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
 function weekdayCode(ymd: string): string {
@@ -105,19 +116,27 @@ export default function PlanPage() {
         reader.onerror = () => reject(new Error("파일을 읽지 못했습니다."));
         reader.readAsDataURL(file);
       });
-      const res = await fetch("/api/flights/parse-ticket", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, mimeType: file.type }),
-      });
+      const res = await fetchWithTimeout(
+        "/api/flights/parse-ticket",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64, mimeType: file.type }),
+        },
+        45000
+      );
       const data = await res.json();
       if (!res.ok) {
         setTicketError(data.error ?? "항공권 이미지를 처리하지 못했습니다.");
       } else {
         setFlightTimes(data);
       }
-    } catch {
-      setTicketError("항공권 이미지를 처리하는 중 오류가 발생했습니다.");
+    } catch (e) {
+      setTicketError(
+        e instanceof Error && e.name === "AbortError"
+          ? "응답이 너무 오래 걸려 중단했습니다. 잠시 후 다시 시도해주세요."
+          : "항공권 이미지를 처리하는 중 오류가 발생했습니다."
+      );
     } finally {
       setTicketUploading(false);
     }
@@ -554,15 +573,19 @@ function CityItinerarySection({
     setRefreshing(cityId);
     setRefreshError(null);
     try {
-      const res = await fetch(`/api/cities/${cityId}/refresh`, { method: "POST" });
+      const res = await fetchWithTimeout(`/api/cities/${cityId}/refresh`, { method: "POST" }, 55000);
       const data = await res.json();
       if (!res.ok) {
         setRefreshError(data.error ?? "업데이트에 실패했습니다.");
       } else {
         await loadCities();
       }
-    } catch {
-      setRefreshError("업데이트 중 오류가 발생했습니다.");
+    } catch (e) {
+      setRefreshError(
+        e instanceof Error && e.name === "AbortError"
+          ? "응답이 너무 오래 걸려 중단했습니다. 잠시 후 다시 시도해주세요."
+          : "업데이트 중 오류가 발생했습니다."
+      );
     } finally {
       setRefreshing(null);
     }
@@ -640,19 +663,27 @@ function CityItinerarySection({
     if (!address) return;
     setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: true, error: null, hospitals: null } }));
     try {
-      const res = await fetch("/api/dialysis/nearby-hospital", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ address, cityNameEn, countryNameEn: country.nameEn }),
-      });
+      const res = await fetchWithTimeout(
+        "/api/dialysis/nearby-hospital",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ address, cityNameEn, countryNameEn: country.nameEn }),
+        },
+        55000
+      );
       const data = await res.json();
       if (!res.ok) {
         setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: data.error ?? "검색에 실패했습니다.", hospitals: null } }));
       } else {
         setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: null, hospitals: data.hospitals } }));
       }
-    } catch {
-      setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: "검색 중 오류가 발생했습니다.", hospitals: null } }));
+    } catch (e) {
+      const message =
+        e instanceof Error && e.name === "AbortError"
+          ? "응답이 너무 오래 걸려 중단했습니다. 잠시 후 다시 시도해주세요."
+          : "검색 중 오류가 발생했습니다.";
+      setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: message, hospitals: null } }));
     }
   };
 

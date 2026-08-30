@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
+// Vercel 서버리스 함수 기본 제한시간(보통 10~15초)보다 웹검색 응답이 오래 걸릴 수 있어 명시적으로 늘려둠.
+export const maxDuration = 60;
+
 const HospitalSchema = z.object({
   name: z.string().min(1),
   url: z.string().min(1),
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
 숙소 주소: ${address}
 도시/국가: ${cityNameEn}, ${countryNameEn}
 
-최대 3곳을 찾아서, 각 병원의 웹사이트 내용을 확인해 외국인 환자 대상 통역 지원이 명시되어 있는지 판단해줘.
+응답 속도가 중요하니 웹 검색은 최대 2~3번만 사용해서 최대 2곳만 빠르게 찾아줘. 각 병원의 웹사이트 내용을 간단히 확인해 외국인 환자 대상 통역 지원이 명시되어 있는지만 판단하면 충분해.
 다른 설명 없이 마지막에 아래 형식의 JSON 배열 하나만 \`\`\`json 코드블록으로 출력해:
 
 [
@@ -56,11 +59,11 @@ export async function POST(req: NextRequest) {
   let finalText = "";
 
   try {
-    for (let iteration = 0; iteration < 4; iteration++) {
+    for (let iteration = 0; iteration < 2; iteration++) {
       const response = await client.messages.create({
-        model: "claude-opus-5",
-        max_tokens: 3000,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
+        model: "claude-sonnet-4-5",
+        max_tokens: 2000,
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
         messages,
       });
 

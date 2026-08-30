@@ -4,6 +4,9 @@ import { z } from "zod";
 import { appendCitySpots, getMergedCity } from "@/lib/cityStore";
 import { cities as seedCities } from "@/lib/data/cities";
 
+// Vercel 서버리스 함수 기본 제한시간(보통 10~15초)보다 웹검색 응답이 오래 걸릴 수 있어 명시적으로 늘려둠.
+export const maxDuration = 60;
+
 const SpotSchema = z.object({
   name: z.string().min(1),
   category: z.enum(["attraction", "lunch", "cafe", "dinner"]),
@@ -43,7 +46,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
   const prompt = `${seed.nameKo}(${seed.nameEn}) 여행 정보를 웹 검색으로 조사해줘.
 목표: 여행객에게 추천할 만한 "명소(attraction)" 최대 4곳, "점심(lunch)" 최대 2곳, "카페(cafe)" 최대 2곳, "저녁(dinner)" 최대 2곳을 찾아줘.
 이미 알고 있는 곳(중복 제안 금지): ${existingNames}
-각 장소가 실제로 존재하고 현재도 운영 중인지 검색으로 확인한 뒤, 아래 형식의 JSON 배열만 응답해. 다른 설명 없이 마지막에 \`\`\`json 코드블록 하나로만 출력해.
+응답 속도가 중요하니 웹 검색은 최대 3~4번만 사용해줘. 각 장소가 실제로 존재하고 현재도 운영 중인지 간단히 확인한 뒤, 아래 형식의 JSON 배열만 응답해. 다른 설명 없이 마지막에 \`\`\`json 코드블록 하나로만 출력해.
 
 [
   { "name": "한국어 장소명 (영문/원어명)", "category": "attraction|lunch|cafe|dinner", "mapQuery": "구글맵 검색에 쓸 영문 질의어(장소명, 도시, 국가)", "notes": "한두 문장 설명" }
@@ -54,11 +57,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
   let finalText = "";
 
   try {
-    for (let iteration = 0; iteration < 4; iteration++) {
+    for (let iteration = 0; iteration < 2; iteration++) {
       const response = await client.messages.create({
-        model: "claude-opus-5",
-        max_tokens: 4000,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 6 }],
+        model: "claude-sonnet-4-5",
+        max_tokens: 3000,
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
         messages,
       });
 
