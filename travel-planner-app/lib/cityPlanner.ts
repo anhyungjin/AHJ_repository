@@ -11,13 +11,16 @@ export interface CityAllocation<T extends CityInfo = CityInfo> {
   nights: number;
 }
 
-/** 추천 도시 개수를 실제 보유한 도시 수/숙박일수에 맞게 조정하고, 도시별 숙박일을 배분한다. */
-export function allocateCities<T extends CityInfo>(availableCities: T[], totalNights: number): CityAllocation<T>[] {
-  if (availableCities.length === 0 || totalNights <= 0) return [];
+/**
+ * 사용자가 고른(또는 추천 기본값으로 선택된) 도시 목록에 숙박일을 배분한다.
+ * chosenCities는 이미 사용자가 원하는 도시만 순서대로 담고 있다고 가정한다.
+ * 숙박일수보다 도시가 많으면 앞쪽 도시부터 우선 배정하고 나머지는 잘라낸다.
+ */
+export function allocateCities<T extends CityInfo>(chosenCities: T[], totalNights: number): CityAllocation<T>[] {
+  if (chosenCities.length === 0 || totalNights <= 0) return [];
 
-  const recommended = recommendCityCount(totalNights);
-  const cityCount = Math.max(1, Math.min(recommended, availableCities.length, totalNights));
-  const chosen = availableCities.slice(0, cityCount);
+  const cityCount = Math.max(1, Math.min(chosenCities.length, totalNights));
+  const chosen = chosenCities.slice(0, cityCount);
 
   const base = Math.floor(totalNights / cityCount);
   const remainder = totalNights % cityCount;

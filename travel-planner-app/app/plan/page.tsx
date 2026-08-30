@@ -5,7 +5,7 @@ import { countries, findCountry, CountryInfo } from "@/lib/data/countries";
 import { computeSuitability, SuitabilityResult, WeatherOutlook } from "@/lib/scoring";
 import { buildSkyscannerUrl, buildNaverFlightUrl } from "@/lib/flightLinks";
 import { CityInfo } from "@/lib/data/cities";
-import { allocateCities, buildItinerary, CityAllocation } from "@/lib/cityPlanner";
+import { allocateCities, buildItinerary, CityAllocation, recommendCityCount } from "@/lib/cityPlanner";
 import {
   buildBookingUrl,
   buildAgodaUrl,
@@ -27,6 +27,28 @@ function addDays(ymd: string, days: number): string {
 }
 
 const ADULT_OPTIONS = [1, 2, 3, 4, 5, 6];
+
+const WEEKDAY_CODE_BY_JS_DAY = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
+
+function weekdayCode(ymd: string): string {
+  return WEEKDAY_CODE_BY_JS_DAY[new Date(ymd).getDay()];
+}
+
+interface HospitalResult {
+  name: string;
+  url: string;
+  translationSupport: "confirmed" | "unclear";
+  notes: string;
+}
+
+interface FlightTimes {
+  outboundArrivalDate: string;
+  outboundArrivalTime: string;
+  outboundArrivalAirport?: string;
+  returnDepartureDate: string;
+  returnDepartureTime: string;
+  returnDepartureAirport?: string;
+}
 
 const WEEKDAYS = [
   { code: "mon", label: "월" },
@@ -67,8 +89,39 @@ export default function PlanPage() {
     priceTier: PriceTier;
     locationPref: LocationPreference;
   } | null>(null);
+  const [flightTimes, setFlightTimes] = useState<FlightTimes | null>(null);
+  const [ticketUploading, setTicketUploading] = useState(false);
+  const [ticketError, setTicketError] = useState<string | null>(null);
 
   const nights = startDate && endDate && endDate >= startDate ? nightsBetween(startDate, endDate) : null;
+
+  const handleTicketUpload = async (file: File) => {
+    setTicketUploading(true);
+    setTicketError(null);
+    try {
+      const imageBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1] ?? "");
+        reader.onerror = () => reject(new Error("파일을 읽지 못했습니다."));
+        reader.readAsDataURL(file);
+      });
+      const res = await fetch("/api/flights/parse-ticket", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imageBase64, mimeType: file.type }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setTicketError(data.error ?? "항공권 이미지를 처리하지 못했습니다.");
+      } else {
+        setFlightTimes(data);
+      }
+    } catch {
+      setTicketError("항공권 이미지를 처리하는 중 오류가 발생했습니다.");
+    } finally {
+      setTicketUploading(false);
+    }
+  };
 
   const toggleDay = (code: string) => {
     setDialysisDays((prev) => (prev.includes(code) ? prev.filter((d) => d !== code) : [...prev, code]));
@@ -338,6 +391,31 @@ export default function PlanPage() {
           <p className="mt-2 text-xs text-neutral-400">
             * 딥링크로 검색 조건은 자동 입력되지만, 각 사이트의 정책 변경에 따라 반영되지 않을 수 있습니다.
           </p>
+
+          <div className="mt-4 border-t border-neutral-200 pt-4">
+            <p className="text-sm font-medium text-neutral-700">항공권 예약을 마치셨나요?</p>
+            <p className="mt-1 text-xs text-neutral-500">
+              예약 확인서 이미지를 올리면 실제 도착/출발 시간을 읽어서 아래 도시별 일정에 표시해드립니다.
+            </p>
+            <input
+              type="file"
+              accept="image/*"
+              disabled={ticketUploading}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleTicketUpload(file);
+              }}
+              className="mt-2 block text-xs text-neutral-600"
+            />
+            {ticketUploading && <p className="mt-1 text-xs text-neutral-500">이미지에서 시간 정보를 읽는 중...</p>}
+            {ticketError && <p className="mt-1 text-xs text-red-600">{ticketError}</p>}
+            {flightTimes && (
+              <p className="mt-1 text-xs text-emerald-700">
+                ✈ 도착 {flightTimes.outboundArrivalDate} {flightTimes.outboundArrivalTime} / 출발{" "}
+                {flightTimes.returnDepartureDate} {flightTimes.returnDepartureTime} 반영됨
+              </p>
+            )}
+          </div>
         </div>
       )}
 
@@ -350,6 +428,9 @@ export default function PlanPage() {
           breakfastOnly={submitted.breakfastOnly}
           priceTier={submitted.priceTier}
           locationPref={submitted.locationPref}
+          flightTimes={flightTimes}
+          dialysisRequired={submitted.dialysisRequired}
+          dialysisDays={dialysisDays}
         />
       )}
 
@@ -418,6 +499,9 @@ function CityItinerarySection({
   breakfastOnly,
   priceTier,
   locationPref,
+  flightTimes,
+  dialysisRequired,
+  dialysisDays,
 }: {
   country: CountryInfo;
   startDate: string;
@@ -425,12 +509,20 @@ function CityItinerarySection({
   adults: number;
   breakfastOnly: boolean;
   priceTier: PriceTier;
+  flightTimes: FlightTimes | null;
+  dialysisRequired: boolean;
+  dialysisDays: string[];
   locationPref: LocationPreference;
 }) {
   const [cities, setCities] = useState<(CityInfo & { updatedAt: string | null })[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
   const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [selectedCityIds, setSelectedCityIds] = useState<string[] | null>(null);
+  const [dialysisAddresses, setDialysisAddresses] = useState<Record<string, string>>({});
+  const [dialysisSearch, setDialysisSearch] = useState<
+    Record<string, { loading: boolean; error: string | null; hospitals: HospitalResult[] | null }>
+  >({});
 
   const loadCities = async () => {
     try {
@@ -506,8 +598,20 @@ function CityItinerarySection({
     );
   }
 
-  const allocations = allocateCities(cities, nights);
+  const defaultCityCount = Math.max(1, Math.min(recommendCityCount(nights), cities.length));
+  const defaultSelectedIds = cities.slice(0, defaultCityCount).map((c) => c.id);
+  const effectiveSelectedIds = selectedCityIds ?? defaultSelectedIds;
+
+  const toggleCity = (cityId: string) => {
+    const base = selectedCityIds ?? defaultSelectedIds;
+    const next = base.includes(cityId) ? base.filter((id) => id !== cityId) : [...base, cityId];
+    setSelectedCityIds(next);
+  };
+
+  const chosenCities = cities.filter((c) => effectiveSelectedIds.includes(c.id));
+  const allocations = allocateCities(chosenCities, nights);
   const itinerary = buildItinerary(allocations);
+  const droppedCityCount = chosenCities.length - allocations.length;
 
   const cityStays: { allocation: CityAllocation<CityInfo & { updatedAt: string | null }>; checkIn: string; checkOut: string }[] = [];
   {
@@ -520,14 +624,83 @@ function CityItinerarySection({
     }
   }
 
+  const dialysisDatesByCity: Record<string, string[]> = {};
+  if (dialysisRequired && dialysisDays.length > 0) {
+    for (const { allocation, checkIn, checkOut } of cityStays) {
+      const dates: string[] = [];
+      for (let d = checkIn; d < checkOut; d = addDays(d, 1)) {
+        if (dialysisDays.includes(weekdayCode(d))) dates.push(d);
+      }
+      if (dates.length > 0) dialysisDatesByCity[allocation.city.id] = dates;
+    }
+  }
+
+  const handleDialysisSearch = async (cityId: string, cityNameEn: string) => {
+    const address = dialysisAddresses[cityId];
+    if (!address) return;
+    setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: true, error: null, hospitals: null } }));
+    try {
+      const res = await fetch("/api/dialysis/nearby-hospital", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ address, cityNameEn, countryNameEn: country.nameEn }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: data.error ?? "검색에 실패했습니다.", hospitals: null } }));
+      } else {
+        setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: null, hospitals: data.hospitals } }));
+      }
+    } catch {
+      setDialysisSearch((prev) => ({ ...prev, [cityId]: { loading: false, error: "검색 중 오류가 발생했습니다.", hospitals: null } }));
+    }
+  };
+
   return (
     <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
       <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
       <p className="mt-1 text-xs text-neutral-500">
-        {nights}박 기준 추천 도시:{" "}
-        {allocations.map((a) => `${a.city.nameKo}(${a.nights}박)`).join(" → ")}. 아침은 숙소에서 해결하고, 명소·점심·카페·명소·저녁
-        순으로 짜고 22시 전 숙소 복귀를 목표로 했습니다.
+        여행하실 도시를 직접 선택하세요. 기본값은 {nights}박 기준 추천 개수({defaultCityCount}개)로 체크되어 있습니다.
       </p>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {cities.map((c) => (
+          <label
+            key={c.id}
+            className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs ${
+              effectiveSelectedIds.includes(c.id)
+                ? "border-blue-500 bg-blue-50 text-blue-700"
+                : "border-neutral-300 text-neutral-600"
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="h-3.5 w-3.5"
+              checked={effectiveSelectedIds.includes(c.id)}
+              onChange={() => toggleCity(c.id)}
+            />
+            {c.nameKo}
+          </label>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-neutral-400">
+        * 현재 조사된 도시만 선택할 수 있습니다({country.nameKo}: {cities.length}개). 다른 도시는 아직 데이터가 없습니다.
+      </p>
+
+      {chosenCities.length === 0 ? (
+        <p className="mt-4 text-sm text-red-600">최소 1개 도시를 선택해주세요.</p>
+      ) : (
+        <>
+          <p className="mt-4 text-xs text-neutral-500">
+            선택하신 도시:{" "}
+            {allocations.map((a) => `${a.city.nameKo}(${a.nights}박)`).join(" → ")}. 아침은 숙소에서 해결하고,
+            명소·점심·카페·명소·저녁 순으로 짜고 22시 전 숙소 복귀를 목표로 했습니다.
+            {droppedCityCount > 0 && (
+              <span className="text-amber-600">
+                {" "}
+                숙박일수보다 선택한 도시가 많아 {droppedCityCount}개 도시는 이번 일정에서 제외했습니다.
+              </span>
+            )}
+          </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
         {allocations.map((a) => (
@@ -552,31 +725,46 @@ function CityItinerarySection({
       {refreshError && <p className="mt-2 text-xs text-red-600">{refreshError}</p>}
 
       <div className="mt-4 space-y-4">
-        {itinerary.map((d) => (
-          <div key={d.day} className="rounded-lg border border-neutral-200 p-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-neutral-800">
-                Day {d.day} · {d.city.nameKo}
-              </span>
-              <a
-                href={d.googleMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs font-medium text-blue-700 hover:underline"
-              >
-                구글맵에서 동선 보기 ↗
-              </a>
+        {itinerary.map((d) => {
+          const dayDate = addDays(startDate, d.day - 1);
+          const isArrivalDay = flightTimes?.outboundArrivalDate === dayDate;
+          const isDepartureDay = flightTimes?.returnDepartureDate === dayDate;
+          return (
+            <div key={d.day} className="rounded-lg border border-neutral-200 p-4">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold text-neutral-800">
+                  Day {d.day} · {d.city.nameKo}
+                </span>
+                <a
+                  href={d.googleMapsUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs font-medium text-blue-700 hover:underline"
+                >
+                  구글맵에서 동선 보기 ↗
+                </a>
+              </div>
+              {isArrivalDay && (
+                <p className="mt-1 text-xs font-medium text-blue-700">
+                  ✈ 이날 {flightTimes!.outboundArrivalTime} 도착 예정 (공항→숙소 이동 시간 고려해주세요)
+                </p>
+              )}
+              {isDepartureDay && (
+                <p className="mt-1 text-xs font-medium text-blue-700">
+                  ✈ 이날 {flightTimes!.returnDepartureTime} 출발 예정 (공항 이동 시간 감안해 오후 일정은 조정하세요)
+                </p>
+              )}
+              <ul className="mt-2 space-y-1 text-sm text-neutral-700">
+                <li>🏨 아침: 숙소에서 해결</li>
+                {d.morningAttraction && <li>📍 명소: {d.morningAttraction.name}</li>}
+                <li>🍽️ 점심: {d.lunch.name}</li>
+                <li>☕ 카페: {d.cafe.name}</li>
+                {d.afternoonAttraction && <li>📍 명소: {d.afternoonAttraction.name}</li>}
+                <li>🌙 저녁: {d.dinner.name} (22시 전 숙소 복귀 목표)</li>
+              </ul>
             </div>
-            <ul className="mt-2 space-y-1 text-sm text-neutral-700">
-              <li>🏨 아침: 숙소에서 해결</li>
-              {d.morningAttraction && <li>📍 명소: {d.morningAttraction.name}</li>}
-              <li>🍽️ 점심: {d.lunch.name}</li>
-              <li>☕ 카페: {d.cafe.name}</li>
-              {d.afternoonAttraction && <li>📍 명소: {d.afternoonAttraction.name}</li>}
-              <li>🌙 저녁: {d.dinner.name} (22시 전 숙소 복귀 목표)</li>
-            </ul>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       <p className="mt-3 text-xs text-neutral-400">
@@ -595,7 +783,7 @@ function CityItinerarySection({
         <div className="mt-3 space-y-3">
           {cityStays.map(({ allocation, checkIn, checkOut }) => {
             const cityQuery = `${allocation.city.nameEn}, ${country.nameEn}`;
-            const searchInput = { cityQuery, checkIn, checkOut, adults, breakfastOnly };
+            const searchInput = { cityQuery, checkIn, checkOut, adults, breakfastOnly, priceTier };
             return (
               <div key={allocation.city.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 p-3">
                 <span className="text-sm text-neutral-700">
@@ -627,6 +815,80 @@ function CityItinerarySection({
           * 가격대·위치 조건은 사이트 필터로 완전히 자동화되지 않을 수 있어 참고용 안내로 표시됩니다.
         </p>
       </div>
+
+      {Object.keys(dialysisDatesByCity).length > 0 && (
+        <div className="mt-6 border-t border-neutral-200 pt-4">
+          <h3 className="text-sm font-semibold text-neutral-800">숙소 근처 투석병원 찾기</h3>
+          <p className="mt-1 text-xs text-neutral-500">
+            위에서 예약하신 실제 숙소의 이름/주소를 입력하면, 투석이 필요한 날짜에 머무는 숙소 기준으로 가장 가까운 병원을
+            찾아드립니다.
+          </p>
+          <div className="mt-3 space-y-4">
+            {cityStays
+              .filter(({ allocation }) => dialysisDatesByCity[allocation.city.id])
+              .map(({ allocation }) => {
+                const cityId = allocation.city.id;
+                const search = dialysisSearch[cityId];
+                return (
+                  <div key={cityId} className="rounded-lg border border-neutral-200 p-3">
+                    <p className="text-sm font-medium text-neutral-800">
+                      {allocation.city.nameKo} 숙소 — 투석 필요일:{" "}
+                      {dialysisDatesByCity[cityId].map((d) => `${d}(${WEEKDAYS.find((w) => w.code === weekdayCode(d))?.label})`).join(", ")}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <input
+                        type="text"
+                        placeholder="숙소 이름 또는 주소 (예: Hotel Gracery Shinjuku, Tokyo)"
+                        value={dialysisAddresses[cityId] ?? ""}
+                        onChange={(e) => setDialysisAddresses((prev) => ({ ...prev, [cityId]: e.target.value }))}
+                        className="min-w-[240px] flex-1 rounded-md border border-neutral-300 px-3 py-1.5 text-sm"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleDialysisSearch(cityId, allocation.city.nameEn)}
+                        disabled={!dialysisAddresses[cityId] || search?.loading}
+                        className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                      >
+                        {search?.loading ? "검색 중..." : "근처 투석병원 찾기"}
+                      </button>
+                    </div>
+                    {search?.error && <p className="mt-2 text-xs text-red-600">{search.error}</p>}
+                    {search?.hospitals && (
+                      <ul className="mt-2 space-y-2">
+                        {search.hospitals.length === 0 && (
+                          <li className="text-xs text-neutral-500">근처에서 병원을 찾지 못했습니다. 직접 검색해보시는 걸 추천합니다.</li>
+                        )}
+                        {search.hospitals.map((h, i) => (
+                          <li key={i} className="rounded-md border border-neutral-200 p-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <a href={h.url} target="_blank" rel="noopener noreferrer" className="text-sm font-medium text-blue-700 hover:underline">
+                                {h.name} ↗
+                              </a>
+                              <span
+                                className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                                  h.translationSupport === "confirmed" ? "bg-emerald-50 text-emerald-700" : "bg-neutral-100 text-neutral-500"
+                                }`}
+                              >
+                                {h.translationSupport === "confirmed" ? "통역 지원 확인됨" : "통역 지원 불확실"}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-neutral-600">{h.notes}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+          <p className="mt-2 text-xs text-amber-600">
+            ⚠ 실제 예약 가능 여부는 반드시 병원에 직접 연락해 확인해주세요. 예약이 안 되면 해당 도시/숙소를 변경하는 것을
+            권장합니다.
+          </p>
+        </div>
+      )}
+        </>
+      )}
     </div>
   );
 }
