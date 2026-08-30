@@ -86,6 +86,90 @@ export const cities: CityInfo[] = [
     ],
   },
   {
+    id: "kyoto",
+    countryCode: "JP",
+    nameKo: "교토",
+    nameEn: "Kyoto",
+    spots: [
+      { name: "후시미이나리 타이샤 (센본토리이)", category: "attraction", mapQuery: "Fushimi Inari Taisha, Kyoto, Japan" },
+      { name: "킨카쿠지 (금각사)", category: "attraction", mapQuery: "Kinkaku-ji Golden Pavilion, Kyoto, Japan" },
+      { name: "아라시야마 대나무숲", category: "attraction", mapQuery: "Arashiyama Bamboo Grove, Kyoto, Japan", notes: "도게츠쿄·텐류지와 함께 둘러보기 좋음" },
+      { name: "니시키 시장 (교토의 부엌)", category: "lunch", mapQuery: "Nishiki Market, Kyoto, Japan" },
+      { name: "% Arabica 교토 아라시야마점", category: "cafe", mapQuery: "% Arabica Kyoto Arashiyama, Japan", notes: "가쓰라강변 뷰, 세계적으로 유명한 카페 체인의 교토점" },
+      { name: "폰토초 골목 (전통 요정·이자카야)", category: "dinner", mapQuery: "Pontocho Alley, Kyoto, Japan" },
+    ],
+    recommendedLodging: [
+      {
+        name: "호텔 그랑비아 교토",
+        area: "교토역",
+        notes: "JR 교토역 직결, 신칸센/공항버스 접근 최고. 후시미이나리·아라시야마 이동도 편리.",
+        mapQuery: "Hotel Granvia Kyoto, Japan",
+      },
+      {
+        name: "호텔 게이한 교토 에키미나미",
+        area: "교토역 남쪽",
+        notes: "교토역 도보 5분, 가성비 좋은 비즈니스 호텔.",
+        mapQuery: "Hotel Keihan Kyoto Ekiminami, Japan",
+      },
+    ],
+  },
+  {
+    id: "fukuoka",
+    countryCode: "JP",
+    nameKo: "후쿠오카",
+    nameEn: "Fukuoka",
+    spots: [
+      { name: "오호리 공원", category: "attraction", mapQuery: "Ohori Park, Fukuoka, Japan" },
+      { name: "다자이후 텐만구", category: "attraction", mapQuery: "Dazaifu Tenmangu Shrine, Fukuoka, Japan", notes: "하카타역에서 전철로 약 25분" },
+      { name: "캐널시티 하카타", category: "attraction", mapQuery: "Canal City Hakata, Fukuoka, Japan" },
+      { name: "잇푸도 라멘 다이묘 본점", category: "lunch", mapQuery: "Ippudo Ramen Daimyo Main Branch, Fukuoka, Japan", notes: "돈코츠라멘 원조 격 하카타라멘 본점" },
+      { name: "카페 브라질레이로 (텐진)", category: "cafe", mapQuery: "Cafe Brasileiro Tenjin, Fukuoka, Japan", notes: "70년 전통의 텐진 대표 다방" },
+      { name: "나카스 야타이 포장마차 거리", category: "dinner", mapQuery: "Nakasu Yatai Food Stalls, Fukuoka, Japan" },
+    ],
+    recommendedLodging: [
+      {
+        name: "미야코 호텔 하카타",
+        area: "하카타역",
+        notes: "JR 하카타역 도보 2분, 공항·신칸센 접근 편리.",
+        mapQuery: "Miyako Hotel Hakata, Japan",
+      },
+      {
+        name: "호텔 오리엔탈 익스프레스 후쿠오카 텐진",
+        area: "텐진",
+        notes: "텐진·오호리공원·나카스 야타이 접근이 좋음.",
+        mapQuery: "Hotel Oriental Express Fukuoka Tenjin, Japan",
+      },
+    ],
+  },
+  {
+    id: "sapporo",
+    countryCode: "JP",
+    nameKo: "삿포로",
+    nameEn: "Sapporo",
+    spots: [
+      { name: "오도리 공원", category: "attraction", mapQuery: "Odori Park, Sapporo, Japan" },
+      { name: "시로이 코이비토 파크", category: "attraction", mapQuery: "Shiroi Koibito Park, Sapporo, Japan", notes: "사전 예약 시 초콜릿 만들기 체험 가능" },
+      { name: "삿포로 시계탑", category: "attraction", mapQuery: "Sapporo Clock Tower, Japan" },
+      { name: "스스키노 라멘요코초", category: "lunch", mapQuery: "Sapporo Ramen Yokocho, Susukino, Japan", notes: "미소라멘 명가 다수" },
+      { name: "모리히코 커피 (마루야마)", category: "cafe", mapQuery: "Morihico Coffee Maruyama, Sapporo, Japan", notes: "1996년부터 이어온 삿포로 대표 로스터리 카페" },
+      { name: "스스키노 이자카야·가니(대게) 요리", category: "dinner", mapQuery: "Susukino district, Sapporo, Japan" },
+    ],
+    recommendedLodging: [
+      {
+        name: "JR 타워 호텔 닛코 삿포로",
+        area: "삿포로역",
+        notes: "삿포로역 직결, 고층 시내 전망.",
+        mapQuery: "JR Tower Hotel Nikko Sapporo, Japan",
+      },
+      {
+        name: "호텔 그레이서리 삿포로",
+        area: "삿포로역",
+        notes: "삿포로역 바로 인근, 오도리공원·스스키노 이동 편리.",
+        mapQuery: "Hotel Gracery Sapporo, Japan",
+      },
+    ],
+  },
+  {
     id: "bangkok",
     countryCode: "TH",
     nameKo: "방콕",
@@ -140,6 +224,68 @@ export const cities: CityInfo[] = [
         area: "시먼딩",
         notes: "MRT 시먼역 1번 출구 도보 2분, 최근 리노베이션.",
         mapQuery: "Orange Hotel Ximending, Taipei, Taiwan",
+      },
+      {
+        name: "코트야드 바이 메리어트 타이베이 (난강)",
+        area: "난강",
+        notes: "여행자 투석 서비스를 제공하는 SunnyEase Clinic(向怡診所)과 도보권, 난강역(MRT·철도·고속철 환승역) 바로 앞이라 투석 일정이 있는 경우 이동 부담이 적음.",
+        mapQuery: "Courtyard by Marriott Taipei, Nangang, Taiwan",
+      },
+    ],
+  },
+  {
+    id: "kaohsiung",
+    countryCode: "TW",
+    nameKo: "가오슝",
+    nameEn: "Kaohsiung",
+    spots: [
+      { name: "롄츠탄 (연지담)", category: "attraction", mapQuery: "Lotus Pond, Zuoying, Kaohsiung, Taiwan", notes: "가오슝영관병원(투석 가능)과 같은 줘잉구 소재, 용호탑 등 사원 다수" },
+      { name: "피어2 예술특구", category: "attraction", mapQuery: "Pier-2 Art Center, Kaohsiung, Taiwan" },
+      { name: "치진도 (페리 섬)", category: "attraction", mapQuery: "Cijin Island, Kaohsiung, Taiwan", notes: "구시 페리부두에서 소형 페리로 이동, 해변·등대" },
+      { name: "줘잉 궈마오 시장 (로컬 아침/점심 맛집골목)", category: "lunch", mapQuery: "Kuo Mao Market, Zuoying, Kaohsiung, Taiwan", notes: "가오슝영관병원 인근" },
+      { name: "리하우 카페 (피어2 인근)", category: "cafe", mapQuery: "Li How Cafe, Pier-2 Art Center, Kaohsiung, Taiwan" },
+      { name: "류허 야시장", category: "dinner", mapQuery: "Liuhe Night Market, Kaohsiung, Taiwan", notes: "신선한 해산물·전통 소식거리로 유명한 대표 야시장" },
+    ],
+    recommendedLodging: [
+      {
+        name: "워터 우즈 인 (Water Woods Inn)",
+        area: "줘잉",
+        notes: "가오슝영관병원(Kaohsiung Veterans General Hospital) 및 줘잉 고속철역 도보권. 투석 일정이 있는 경우 이동이 가장 짧음.",
+        mapQuery: "Water Woods Inn, Zuoying, Kaohsiung, Taiwan",
+      },
+      {
+        name: "트래블러 스테이션 R15",
+        area: "줘잉",
+        notes: "롄츠탄 차량 5분, 가오슝영관병원과 가까운 줘잉구 소재 숙소.",
+        mapQuery: "Traveler Station R15, Zuoying, Kaohsiung, Taiwan",
+      },
+    ],
+  },
+  {
+    id: "taichung",
+    countryCode: "TW",
+    nameKo: "타이중",
+    nameEn: "Taichung",
+    spots: [
+      { name: "레인보우 빌리지 (무지개마을)", category: "attraction", mapQuery: "Rainbow Village, Taichung, Taiwan" },
+      { name: "가오메이 습지", category: "attraction", mapQuery: "Gaomei Wetlands, Taichung, Taiwan", notes: "일몰 명소, 밀물 시간 미리 확인 필요" },
+      { name: "국립 타이중 극장", category: "attraction", mapQuery: "National Taichung Theater, Taichung, Taiwan" },
+      { name: "춘수당 (버블티 원조 본점)", category: "lunch", mapQuery: "Chun Shui Tang Original Store, Taichung, Taiwan", notes: "버블 밀크티 발상지로 알려진 찻집 겸 레스토랑" },
+      { name: "미야하라 (宮原眼科)", category: "cafe", mapQuery: "Miyahara, Taichung, Taiwan", notes: "일제강점기 안과 건물을 개조한 아이스크림·디저트숍" },
+      { name: "펑자 야시장", category: "dinner", mapQuery: "Feng Chia Night Market, Taichung, Taiwan" },
+    ],
+    recommendedLodging: [
+      {
+        name: "하워드 프린스 호텔 타이중",
+        area: "시툰구",
+        notes: "타이중영관병원(Taichung Veterans General Hospital) 인근 시툰구 소재로 투석 일정 이동 부담이 적음.",
+        mapQuery: "Howard Prince Hotel Taichung, Xitun, Taiwan",
+      },
+      {
+        name: "아이클라우드 럭셔리 리조트 앤 호텔",
+        area: "시툰구",
+        notes: "타이중영관병원과 같은 시툰구, 펑자 야시장 이동도 가능한 거리.",
+        mapQuery: "iCloud Luxury Resort and Hotel, Xitun, Taichung, Taiwan",
       },
     ],
   },
@@ -211,6 +357,8 @@ export const cities: CityInfo[] = [
       { name: "차이나타운 콤플렉스 호커센터 (딤섬/얌차)", category: "lunch", mapQuery: "Chinatown Complex Food Centre, Singapore" },
       { name: "야쿤 카야토스트 (차이나타운 본점)", category: "cafe", mapQuery: "Ya Kun Kaya Toast Chinatown, Singapore" },
       { name: "클락키 리버사이드 레스토랑 거리", category: "dinner", mapQuery: "Clarke Quay, Singapore" },
+      { name: "이스트코스트 파크", category: "attraction", mapQuery: "East Coast Park, Singapore", notes: "베독/카통 인근 해변공원, 자전거 대여 가능" },
+      { name: "328 카통 락사", category: "lunch", mapQuery: "328 Katong Laksa, Singapore", notes: "페라나칸 지역 대표 로컬 맛집" },
     ],
     recommendedLodging: [
       {
@@ -225,14 +373,20 @@ export const cities: CityInfo[] = [
         notes: "차이나타운 도보 10분, 마리나베이 도보 20분. 옥상 수영장 보유.",
         mapQuery: "Holiday Inn Express Singapore Clarke Quay, Singapore",
       },
+      {
+        name: "홀리데이 인 익스프레스 싱가포르 카통",
+        area: "베독/카통",
+        notes: "관광객 대상 투석 안내를 운영하는 Firstline Dialysis Centre(베독) 도보권. 이스트코스트·카통 로컬 맛집 밀집 지역이라 투석 일정이 있는 가족 여행에 적합.",
+        mapQuery: "Holiday Inn Express Singapore Katong, Singapore",
+      },
     ],
   },
 ];
 
 export const recommendedCitiesByCountry: Record<string, string[]> = {
-  JP: ["tokyo", "osaka"],
+  JP: ["tokyo", "osaka", "kyoto", "fukuoka", "sapporo"],
   TH: ["bangkok"],
-  TW: ["taipei"],
+  TW: ["taipei", "kaohsiung", "taichung"],
   VN: ["danang", "hoian"],
   SG: ["singapore"],
 };
