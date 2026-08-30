@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { countries, findCountry } from "@/lib/data/countries";
+import { countries, findCountry, CountryInfo } from "@/lib/data/countries";
 import { computeSuitability, SuitabilityResult, WeatherOutlook } from "@/lib/scoring";
+import { buildSkyscannerUrl, buildNaverFlightUrl } from "@/lib/flightLinks";
 
 const WEEKDAYS = [
   { code: "mon", label: "월" },
@@ -29,6 +30,12 @@ export default function PlanPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SuitabilityResult | null>(null);
+  const [submitted, setSubmitted] = useState<{
+    country: CountryInfo;
+    startDate: string;
+    endDate: string;
+    dialysisRequired: boolean;
+  } | null>(null);
 
   const toggleDay = (code: string) => {
     setDialysisDays((prev) => (prev.includes(code) ? prev.filter((d) => d !== code) : [...prev, code]));
@@ -85,6 +92,7 @@ export default function PlanPage() {
         suitability.reasons.push("일기예보 조회에 실패해 이번 판단에는 날씨가 반영되지 않았습니다. 통계적 기후 정보만 사용했습니다.");
       }
       setResult(suitability);
+      setSubmitted({ country, startDate, endDate, dialysisRequired });
     } catch {
       setError("적합도를 계산하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
@@ -203,6 +211,91 @@ export default function PlanPage() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {result && result.label !== "비추천" && submitted && (
+        <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-neutral-800">항공권 확인하기</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            항공권 가격은 실시간 조회 대신, 아래 버튼으로 각 사이트에서 직접 확인해주세요. 인천(ICN) 출발 기준이며, 출발 9시경 / 도착
+            22시경(±1시간)을 우선적으로 확인하시는 걸 추천합니다.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <a
+              href={buildSkyscannerUrl(submitted.country.airportCode, submitted.startDate, submitted.endDate)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+            >
+              스카이스캐너에서 확인 →
+            </a>
+            <a
+              href={buildNaverFlightUrl(submitted.country.airportCode, submitted.startDate, submitted.endDate)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
+            >
+              네이버 항공권에서 확인 →
+            </a>
+          </div>
+          <p className="mt-2 text-xs text-neutral-400">
+            * 딥링크로 검색 조건은 자동 입력되지만, 각 사이트의 정책 변경에 따라 반영되지 않을 수 있습니다.
+          </p>
+        </div>
+      )}
+
+      {submitted?.dialysisRequired && (
+        <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+          <h2 className="text-sm font-semibold text-neutral-800">투석 가능 병원 정보</h2>
+          {submitted.country.dialysis.hospitals && submitted.country.dialysis.hospitals.length > 0 ? (
+            <ul className="mt-3 space-y-3">
+              {submitted.country.dialysis.hospitals.map((h, i) => (
+                <li key={i} className="rounded-lg border border-neutral-200 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <a
+                      href={h.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-blue-700 hover:underline"
+                    >
+                      {h.name} ↗
+                    </a>
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                        h.translationSupport === "confirmed"
+                          ? "bg-emerald-50 text-emerald-700"
+                          : "bg-neutral-100 text-neutral-500"
+                      }`}
+                    >
+                      {h.translationSupport === "confirmed" ? "통역 지원 확인됨" : "통역 지원 불확실"}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-neutral-600">{h.notes}</p>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="mt-3 text-sm text-neutral-600">
+              <p>아직 이 국가는 투석 병원 정보를 조사하지 못했습니다. 아래 검색 링크로 직접 찾아보시는 걸 추천합니다.</p>
+              <a
+                href={`https://www.google.com/search?q=${encodeURIComponent(
+                  `${submitted.country.nameEn} hemodialysis for tourists international patient`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 inline-block text-blue-700 hover:underline"
+              >
+                구글에서 검색하기 ↗
+              </a>
+            </div>
+          )}
+          <p className="mt-3 text-xs text-amber-600">
+            ⚠ 위 정보는 병원 웹사이트를 참고해 정리한 자료로, 실제 예약 가능 여부·비용·통역 수준은 반드시 병원에 직접 연락해 확인해야 합니다.
+            {dialysisDays.length > 0 && (
+              <> 선택하신 투석 요일({dialysisDays.map((d) => WEEKDAYS.find((w) => w.code === d)?.label).join(", ")})에 예약이 불가하다면 국가/도시 변경을 고려해주세요.</>
+            )}
+          </p>
         </div>
       )}
     </main>
