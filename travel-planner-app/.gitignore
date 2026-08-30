@@ -36,6 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# runtime-generated city data (populated via the update button)
+/data/city-overrides.json
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

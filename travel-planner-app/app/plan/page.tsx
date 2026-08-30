@@ -1,13 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { countries, findCountry, CountryInfo } from "@/lib/data/countries";
 import { computeSuitability, SuitabilityResult, WeatherOutlook } from "@/lib/scoring";
 import { buildSkyscannerUrl, buildNaverFlightUrl } from "@/lib/flightLinks";
-import { getCitiesForCountry } from "@/lib/data/cities";
+import { CityInfo } from "@/lib/data/cities";
 import { allocateCities, buildItinerary } from "@/lib/cityPlanner";
-
-const CATEGORY_LABEL = { attraction: "명소", lunch: "점심", cafe: "카페", dinner: "저녁" } as const;
 
 function nightsBetween(start: string, end: string): number {
   const ms = new Date(end).getTime() - new Date(start).getTime();
@@ -316,9 +314,74 @@ export default function PlanPage() {
 }
 
 function CityItinerarySection({ country, nights }: { country: CountryInfo; nights: number }) {
-  const availableCities = getCitiesForCountry(country.code);
+  const [cities, setCities] = useState<(CityInfo & { updatedAt: string | null })[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
 
-  if (availableCities.length === 0) {
+  const loadCities = async () => {
+    try {
+      const res = await fetch(`/api/cities?country=${country.code}`);
+      const data = await res.json();
+      setCities(data.cities ?? []);
+    } catch {
+      setLoadError("도시 정보를 불러오지 못했습니다.");
+    }
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/cities?country=${country.code}`);
+        const data = await res.json();
+        if (!cancelled) setCities(data.cities ?? []);
+      } catch {
+        if (!cancelled) setLoadError("도시 정보를 불러오지 못했습니다.");
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [country.code]);
+
+  const handleRefresh = async (cityId: string) => {
+    setRefreshing(cityId);
+    setRefreshError(null);
+    try {
+      const res = await fetch(`/api/cities/${cityId}/refresh`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setRefreshError(data.error ?? "업데이트에 실패했습니다.");
+      } else {
+        await loadCities();
+      }
+    } catch {
+      setRefreshError("업데이트 중 오류가 발생했습니다.");
+    } finally {
+      setRefreshing(null);
+    }
+  };
+
+  if (loadError) {
+    return (
+      <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
+        <p className="mt-2 text-sm text-red-600">{loadError}</p>
+      </div>
+    );
+  }
+
+  if (cities === null) {
+    return (
+      <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
+        <p className="mt-2 text-sm text-neutral-500">불러오는 중...</p>
+      </div>
+    );
+  }
+
+  if (cities.length === 0) {
     return (
       <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
         <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
@@ -330,7 +393,7 @@ function CityItinerarySection({ country, nights }: { country: CountryInfo; night
     );
   }
 
-  const allocations = allocateCities(availableCities, nights);
+  const allocations = allocateCities(cities, nights);
   const itinerary = buildItinerary(allocations);
 
   return (
@@ -338,9 +401,31 @@ function CityItinerarySection({ country, nights }: { country: CountryInfo; night
       <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
       <p className="mt-1 text-xs text-neutral-500">
         {nights}박 기준 추천 도시:{" "}
-        {allocations.map((a) => `${a.city.nameKo}(${a.nights}박)`).join(" → ")}. 아침은 숙소에서 해결하고, 점심·카페·저녁을
-        포함해 22시 전 숙소 복귀를 기준으로 짰습니다.
+        {allocations.map((a) => `${a.city.nameKo}(${a.nights}박)`).join(" → ")}. 아침은 숙소에서 해결하고, 명소·점심·카페·명소·저녁
+        순으로 짜고 22시 전 숙소 복귀를 목표로 했습니다.
       </p>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {allocations.map((a) => (
+          <div key={a.city.id} className="flex items-center gap-2 rounded-full border border-neutral-200 px-3 py-1">
+            <span className="text-xs text-neutral-600">
+              {a.city.nameKo}
+              {a.city.updatedAt && (
+                <span className="ml-1 text-neutral-400">(업데이트: {new Date(a.city.updatedAt).toLocaleDateString("ko-KR")})</span>
+              )}
+            </span>
+            <button
+              type="button"
+              onClick={() => handleRefresh(a.city.id)}
+              disabled={refreshing === a.city.id}
+              className="text-xs font-medium text-blue-700 hover:underline disabled:opacity-50"
+            >
+              {refreshing === a.city.id ? "업데이트 중..." : "정보 업데이트"}
+            </button>
+          </div>
+        ))}
+      </div>
+      {refreshError && <p className="mt-2 text-xs text-red-600">{refreshError}</p>}
 
       <div className="mt-4 space-y-4">
         {itinerary.map((d) => (
@@ -360,20 +445,11 @@ function CityItinerarySection({ country, nights }: { country: CountryInfo; night
             </div>
             <ul className="mt-2 space-y-1 text-sm text-neutral-700">
               <li>🏨 아침: 숙소에서 해결</li>
-              {d.attractions.map((a, i) => (
-                <li key={i}>
-                  📍 {CATEGORY_LABEL.attraction}: {a.name}
-                </li>
-              ))}
-              <li>
-                🍽️ {CATEGORY_LABEL.lunch}: {d.lunch.name}
-              </li>
-              <li>
-                ☕ {CATEGORY_LABEL.cafe}: {d.cafe.name}
-              </li>
-              <li>
-                🌙 {CATEGORY_LABEL.dinner}: {d.dinner.name} (22시 전 숙소 복귀 목표)
-              </li>
+              {d.morningAttraction && <li>📍 명소: {d.morningAttraction.name}</li>}
+              <li>🍽️ 점심: {d.lunch.name}</li>
+              <li>☕ 카페: {d.cafe.name}</li>
+              {d.afternoonAttraction && <li>📍 명소: {d.afternoonAttraction.name}</li>}
+              <li>🌙 저녁: {d.dinner.name} (22시 전 숙소 복귀 목표)</li>
             </ul>
           </div>
         ))}
@@ -381,7 +457,8 @@ function CityItinerarySection({ country, nights }: { country: CountryInfo; night
 
       <p className="mt-3 text-xs text-neutral-400">
         * 구글맵 링크는 새 탭에서 열리며, 본인 구글 계정으로 로그인된 브라우저라면 경로를 그대로 저장하거나 내 지도에 장소를
-        추가할 수 있습니다.
+        추가할 수 있습니다. &quot;정보 업데이트&quot;는 Claude가 웹 검색으로 새 명소·맛집을 찾아 추가합니다(기존 장소와
+        중복되지 않음).
       </p>
     </div>
   );
