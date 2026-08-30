@@ -5,12 +5,28 @@ import { countries, findCountry, CountryInfo } from "@/lib/data/countries";
 import { computeSuitability, SuitabilityResult, WeatherOutlook } from "@/lib/scoring";
 import { buildSkyscannerUrl, buildNaverFlightUrl } from "@/lib/flightLinks";
 import { CityInfo } from "@/lib/data/cities";
-import { allocateCities, buildItinerary } from "@/lib/cityPlanner";
+import { allocateCities, buildItinerary, CityAllocation } from "@/lib/cityPlanner";
+import {
+  buildBookingUrl,
+  buildAgodaUrl,
+  PriceTier,
+  LocationPreference,
+  PRICE_TIER_LABEL,
+  LOCATION_LABEL,
+} from "@/lib/lodgingLinks";
 
 function nightsBetween(start: string, end: string): number {
   const ms = new Date(end).getTime() - new Date(start).getTime();
   return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
 }
+
+function addDays(ymd: string, days: number): string {
+  const d = new Date(ymd);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+const ADULT_OPTIONS = [1, 2, 3, 4, 5, 6];
 
 const WEEKDAYS = [
   { code: "mon", label: "월" },
@@ -34,6 +50,10 @@ export default function PlanPage() {
   const [endDate, setEndDate] = useState("");
   const [dialysisRequired, setDialysisRequired] = useState(false);
   const [dialysisDays, setDialysisDays] = useState<string[]>([]);
+  const [adults, setAdults] = useState(1);
+  const [breakfastOnly, setBreakfastOnly] = useState(false);
+  const [priceTier, setPriceTier] = useState<PriceTier>("10to20");
+  const [locationPref, setLocationPref] = useState<LocationPreference>("any");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SuitabilityResult | null>(null);
@@ -42,7 +62,13 @@ export default function PlanPage() {
     startDate: string;
     endDate: string;
     dialysisRequired: boolean;
+    adults: number;
+    breakfastOnly: boolean;
+    priceTier: PriceTier;
+    locationPref: LocationPreference;
   } | null>(null);
+
+  const nights = startDate && endDate && endDate >= startDate ? nightsBetween(startDate, endDate) : null;
 
   const toggleDay = (code: string) => {
     setDialysisDays((prev) => (prev.includes(code) ? prev.filter((d) => d !== code) : [...prev, code]));
@@ -99,7 +125,7 @@ export default function PlanPage() {
         suitability.reasons.push("일기예보 조회에 실패해 이번 판단에는 날씨가 반영되지 않았습니다. 통계적 기후 정보만 사용했습니다.");
       }
       setResult(suitability);
-      setSubmitted({ country, startDate, endDate, dialysisRequired });
+      setSubmitted({ country, startDate, endDate, dialysisRequired, adults, breakfastOnly, priceTier, locationPref });
     } catch {
       setError("적합도를 계산하는 중 문제가 발생했습니다. 잠시 후 다시 시도해주세요.");
     } finally {
@@ -150,6 +176,69 @@ export default function PlanPage() {
               className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
               required
             />
+          </div>
+        </div>
+        {nights !== null && (
+          <p className="-mt-3 text-sm font-medium text-neutral-600">
+            {nights}박 {nights + 1}일 일정입니다.
+          </p>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-neutral-700">인원수 (항공권/숙소 검색에 사용)</label>
+          <select
+            value={adults}
+            onChange={(e) => setAdults(Number(e.target.value))}
+            className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+          >
+            {ADULT_OPTIONS.map((n) => (
+              <option key={n} value={n}>
+                성인 {n}명
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="rounded-lg border border-neutral-200 p-4">
+          <p className="text-sm font-medium text-neutral-700">숙소 조건</p>
+          <label className="mt-2 flex items-center gap-2 text-sm text-neutral-700">
+            <input
+              type="checkbox"
+              checked={breakfastOnly}
+              onChange={(e) => setBreakfastOnly(e.target.checked)}
+              className="h-4 w-4 rounded border-neutral-300"
+            />
+            조식 포함 숙소만
+          </label>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-neutral-500">1박 예산</label>
+              <select
+                value={priceTier}
+                onChange={(e) => setPriceTier(e.target.value as PriceTier)}
+                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              >
+                {(Object.keys(PRICE_TIER_LABEL) as PriceTier[]).map((t) => (
+                  <option key={t} value={t}>
+                    {PRICE_TIER_LABEL[t]}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-neutral-500">위치 선호</label>
+              <select
+                value={locationPref}
+                onChange={(e) => setLocationPref(e.target.value as LocationPreference)}
+                className="mt-1 w-full rounded-md border border-neutral-300 px-3 py-2 text-sm"
+              >
+                {(Object.keys(LOCATION_LABEL) as LocationPreference[]).map((l) => (
+                  <option key={l} value={l}>
+                    {LOCATION_LABEL[l]}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
         </div>
 
@@ -225,12 +314,12 @@ export default function PlanPage() {
         <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-neutral-800">항공권 확인하기</h2>
           <p className="mt-1 text-xs text-neutral-500">
-            항공권 가격은 실시간 조회 대신, 아래 버튼으로 각 사이트에서 직접 확인해주세요. 인천(ICN) 출발 기준이며, 출발 9시경 / 도착
-            22시경(±1시간)을 우선적으로 확인하시는 걸 추천합니다.
+            항공권 가격은 실시간 조회 대신, 아래 버튼으로 각 사이트에서 직접 확인해주세요. 인천(ICN) 출발, 성인 {submitted.adults}명
+            기준이며, 출발 9시경 / 도착 22시경(±1시간)을 우선적으로 확인하시는 걸 추천합니다.
           </p>
           <div className="mt-3 flex flex-wrap gap-3">
             <a
-              href={buildSkyscannerUrl(submitted.country.airportCode, submitted.startDate, submitted.endDate)}
+              href={buildSkyscannerUrl(submitted.country.airportCode, submitted.startDate, submitted.endDate, submitted.adults)}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
@@ -238,7 +327,7 @@ export default function PlanPage() {
               스카이스캐너에서 확인 →
             </a>
             <a
-              href={buildNaverFlightUrl(submitted.country.airportCode, submitted.startDate, submitted.endDate)}
+              href={buildNaverFlightUrl(submitted.country.airportCode, submitted.startDate, submitted.endDate, submitted.adults)}
               target="_blank"
               rel="noopener noreferrer"
               className="rounded-md border border-neutral-300 px-4 py-2 text-sm font-medium text-neutral-800 hover:bg-neutral-50"
@@ -253,7 +342,15 @@ export default function PlanPage() {
       )}
 
       {result && result.label !== "비추천" && submitted && (
-        <CityItinerarySection country={submitted.country} nights={nightsBetween(submitted.startDate, submitted.endDate)} />
+        <CityItinerarySection
+          country={submitted.country}
+          startDate={submitted.startDate}
+          nights={nightsBetween(submitted.startDate, submitted.endDate)}
+          adults={submitted.adults}
+          breakfastOnly={submitted.breakfastOnly}
+          priceTier={submitted.priceTier}
+          locationPref={submitted.locationPref}
+        />
       )}
 
       {submitted?.dialysisRequired && (
@@ -313,7 +410,23 @@ export default function PlanPage() {
   );
 }
 
-function CityItinerarySection({ country, nights }: { country: CountryInfo; nights: number }) {
+function CityItinerarySection({
+  country,
+  startDate,
+  nights,
+  adults,
+  breakfastOnly,
+  priceTier,
+  locationPref,
+}: {
+  country: CountryInfo;
+  startDate: string;
+  nights: number;
+  adults: number;
+  breakfastOnly: boolean;
+  priceTier: PriceTier;
+  locationPref: LocationPreference;
+}) {
   const [cities, setCities] = useState<(CityInfo & { updatedAt: string | null })[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState<string | null>(null);
@@ -396,6 +509,17 @@ function CityItinerarySection({ country, nights }: { country: CountryInfo; night
   const allocations = allocateCities(cities, nights);
   const itinerary = buildItinerary(allocations);
 
+  const cityStays: { allocation: CityAllocation<CityInfo & { updatedAt: string | null }>; checkIn: string; checkOut: string }[] = [];
+  {
+    let cursor = startDate;
+    for (const allocation of allocations) {
+      const checkIn = cursor;
+      const checkOut = addDays(cursor, allocation.nights);
+      cityStays.push({ allocation, checkIn, checkOut });
+      cursor = checkOut;
+    }
+  }
+
   return (
     <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
       <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
@@ -460,6 +584,49 @@ function CityItinerarySection({ country, nights }: { country: CountryInfo; night
         추가할 수 있습니다. &quot;정보 업데이트&quot;는 Claude가 웹 검색으로 새 명소·맛집을 찾아 추가합니다(기존 장소와
         중복되지 않음).
       </p>
+
+      <div className="mt-6 border-t border-neutral-200 pt-4">
+        <h3 className="text-sm font-semibold text-neutral-800">숙소 확인하기</h3>
+        <p className="mt-1 text-xs text-neutral-500">
+          도시별 체류 기간에 맞춰 부킹닷컴/아고다 검색 결과로 이동합니다. 조식·가격대·위치 조건은 각 사이트에서 아래 조건대로
+          필터를 한 번 더 확인해주세요 — 조식 포함: {breakfastOnly ? "예 (딥링크에 필터 반영 시도)" : "상관없음"} · 1박 예산:{" "}
+          {PRICE_TIER_LABEL[priceTier]} · 위치: {LOCATION_LABEL[locationPref]}
+        </p>
+        <div className="mt-3 space-y-3">
+          {cityStays.map(({ allocation, checkIn, checkOut }) => {
+            const cityQuery = `${allocation.city.nameEn}, ${country.nameEn}`;
+            const searchInput = { cityQuery, checkIn, checkOut, adults, breakfastOnly };
+            return (
+              <div key={allocation.city.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-neutral-200 p-3">
+                <span className="text-sm text-neutral-700">
+                  {allocation.city.nameKo} ({checkIn} ~ {checkOut}, {allocation.nights}박)
+                </span>
+                <div className="flex gap-2">
+                  <a
+                    href={buildBookingUrl(searchInput)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50"
+                  >
+                    부킹닷컴 →
+                  </a>
+                  <a
+                    href={buildAgodaUrl(searchInput)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-md border border-neutral-300 px-3 py-1.5 text-xs font-medium text-neutral-800 hover:bg-neutral-50"
+                  >
+                    아고다 →
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-xs text-neutral-400">
+          * 가격대·위치 조건은 사이트 필터로 완전히 자동화되지 않을 수 있어 참고용 안내로 표시됩니다.
+        </p>
+      </div>
     </div>
   );
 }
