@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
+import { getCached, setCached, normalizeCacheKey } from "@/lib/aiCache";
 
 // Vercel 서버리스 함수 기본 제한시간(보통 10~15초)보다 웹검색 응답이 오래 걸릴 수 있어 명시적으로 늘려둠.
 export const maxDuration = 60;
+
+const CACHE_NAME = "dialysis-hospital-cache";
 
 const HospitalSchema = z.object({
   name: z.string().min(1),
@@ -12,6 +15,7 @@ const HospitalSchema = z.object({
   notes: z.string(),
 });
 const HospitalsResponseSchema = z.array(HospitalSchema);
+type HospitalsResponse = z.infer<typeof HospitalsResponseSchema>;
 
 function extractJson(text: string): unknown {
   const fenced = text.match(/```json\s*([\s\S]*?)```/);
@@ -21,6 +25,20 @@ function extractJson(text: string): unknown {
 }
 
 export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => null);
+  const address: string | undefined = body?.address;
+  const cityNameEn: string | undefined = body?.cityNameEn;
+  const countryNameEn: string | undefined = body?.countryNameEn;
+  if (!address || !cityNameEn || !countryNameEn) {
+    return NextResponse.json({ error: "숙소 주소와 도시/국가 정보가 필요합니다." }, { status: 400 });
+  }
+
+  const cacheKey = normalizeCacheKey(address, cityNameEn, countryNameEn);
+  const cached = getCached<HospitalsResponse>(CACHE_NAME, cacheKey);
+  if (cached) {
+    return NextResponse.json({ hospitals: cached, cached: true });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -32,20 +50,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const body = await req.json().catch(() => null);
-  const address: string | undefined = body?.address;
-  const cityNameEn: string | undefined = body?.cityNameEn;
-  const countryNameEn: string | undefined = body?.countryNameEn;
-  if (!address || !cityNameEn || !countryNameEn) {
-    return NextResponse.json({ error: "숙소 주소와 도시/국가 정보가 필요합니다." }, { status: 400 });
-  }
-
   const prompt = `아래 숙소 주소에서 가장 가까운, 외국인 여행자가 임시 혈액투석(hemodialysis)을 받을 수 있는 병원/클리닉을 웹 검색으로 찾아줘.
 
 숙소 주소: ${address}
 도시/국가: ${cityNameEn}, ${countryNameEn}
 
-응답 속도가 중요하니 웹 검색은 최대 2~3번만 사용해서 최대 2곳만 빠르게 찾아줘. 각 병원의 웹사이트 내용을 간단히 확인해 외국인 환자 대상 통역 지원이 명시되어 있는지만 판단하면 충분해.
+응답 속도와 비용이 중요하니 웹 검색은 최대 2번만 사용해서 최대 2곳만 빠르게 찾아줘. 각 병원의 웹사이트 내용을 간단히 확인해 외국인 환자 대상 통역 지원이 명시되어 있는지만 판단하면 충분해.
 다른 설명 없이 마지막에 아래 형식의 JSON 배열 하나만 \`\`\`json 코드블록으로 출력해:
 
 [
@@ -61,9 +71,9 @@ export async function POST(req: NextRequest) {
   try {
     for (let iteration = 0; iteration < 2; iteration++) {
       const response = await client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 2000,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
+        model: "claude-haiku-4-5",
+        max_tokens: 1500,
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 2 }],
         messages,
       });
 
@@ -85,6 +95,7 @@ export async function POST(req: NextRequest) {
 
   try {
     const parsed = HospitalsResponseSchema.parse(extractJson(finalText));
+    setCached(CACHE_NAME, cacheKey, parsed);
     return NextResponse.json({ hospitals: parsed });
   } catch {
     return NextResponse.json(

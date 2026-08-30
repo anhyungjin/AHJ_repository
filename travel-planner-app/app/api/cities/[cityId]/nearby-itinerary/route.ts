@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { cities as seedCities } from "@/lib/data/cities";
+import { getCached, setCached, normalizeCacheKey } from "@/lib/aiCache";
 
 export const maxDuration = 60;
+
+const CACHE_NAME = "nearby-itinerary-cache";
 
 const SpotSchema = z.object({
   name: z.string().min(1),
@@ -12,6 +15,7 @@ const SpotSchema = z.object({
   notes: z.string().optional(),
 });
 const SpotsResponseSchema = z.array(SpotSchema);
+type SpotsResponse = z.infer<typeof SpotsResponseSchema>;
 
 function extractJson(text: string): unknown {
   const fenced = text.match(/```json\s*([\s\S]*?)```/);
@@ -27,6 +31,20 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
     return NextResponse.json({ error: "알 수 없는 도시입니다." }, { status: 404 });
   }
 
+  const body = await req.json().catch(() => null);
+  const address: string | undefined = body?.address;
+  const nights: number | undefined = body?.nights;
+  if (!address) {
+    return NextResponse.json({ error: "숙소 이름/주소가 필요합니다." }, { status: 400 });
+  }
+
+  const n = Math.max(1, Math.min(nights ?? 2, 5));
+  const cacheKey = normalizeCacheKey(cityId, address, String(n));
+  const cached = getCached<SpotsResponse>(CACHE_NAME, cacheKey);
+  if (cached) {
+    return NextResponse.json({ spots: cached, cached: true });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -38,27 +56,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
     );
   }
 
-  const body = await req.json().catch(() => null);
-  const address: string | undefined = body?.address;
-  const nights: number | undefined = body?.nights;
-  if (!address) {
-    return NextResponse.json({ error: "숙소 이름/주소가 필요합니다." }, { status: 400 });
-  }
-
-  const n = Math.max(1, Math.min(nights ?? 2, 5));
-
   const prompt = `${seed.nameKo}(${seed.nameEn})에서 아래 숙소 근처 일정을 다시 짜려고 해.
 
 숙소: ${address}
 
 이 숙소에서 도보 또는 대중교통으로 30~40분 이내로 갈 수 있는 곳 위주로, ${n}박 일정을 채울 수 있을 만큼 아래 개수를 찾아줘 (숙소에서 왕복 2~3시간씩 걸리는 먼 곳은 절대 포함하지 마):
-- 명소(attraction): ${n * 2}곳
-- 점심(lunch): ${n}곳
-- 카페(cafe): ${n}곳
-- 저녁(dinner): ${n}곳
+- 명소(attraction): ${Math.min(n + 1, 6)}곳
+- 점심(lunch): ${Math.min(n, 3)}곳
+- 카페(cafe): ${Math.min(n, 3)}곳
+- 저녁(dinner): ${Math.min(n, 3)}곳
 
 각 장소가 실제로 존재하고 숙소에서 얼마나 가까운지(대략 도보/지하철 몇 분) 웹 검색으로 확인한 뒤, notes에 그 이동시간을 간단히 적어줘.
-응답 속도가 중요하니 웹 검색은 최대 4~5번만 사용해. 다른 설명 없이 마지막에 아래 형식의 JSON 배열 하나만 \`\`\`json 코드블록으로 출력해:
+응답 속도와 비용이 중요하니 웹 검색은 최대 2~3번만 사용해. 다른 설명 없이 마지막에 아래 형식의 JSON 배열 하나만 \`\`\`json 코드블록으로 출력해:
 
 [
   { "name": "한국어 장소명 (영문/원어명)", "category": "attraction|lunch|cafe|dinner", "mapQuery": "구글맵 검색에 쓸 영문 질의어(장소명, 도시, 국가)", "notes": "숙소에서 도보/지하철 약 N분 등 이동시간 위주 설명" }
@@ -71,9 +80,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
   try {
     for (let iteration = 0; iteration < 2; iteration++) {
       const response = await client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 3000,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 5 }],
+        model: "claude-haiku-4-5",
+        max_tokens: 2000,
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
         messages,
       });
 
@@ -98,6 +107,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
     if (parsed.length === 0) {
       return NextResponse.json({ error: "숙소 근처에서 추천할 만한 장소를 찾지 못했습니다." }, { status: 502 });
     }
+    setCached(CACHE_NAME, cacheKey, parsed);
     return NextResponse.json({ spots: parsed });
   } catch {
     return NextResponse.json(

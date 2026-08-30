@@ -36,8 +36,9 @@ yarn-error.log*
 # vercel
 .vercel
 
-# runtime-generated city data (populated via the update button)
+# runtime-generated city data and AI response caches
 /data/city-overrides.json
+/data/*-cache.json
 
 # typescript
 *.tsbuildinfo

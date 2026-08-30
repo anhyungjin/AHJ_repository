@@ -3,9 +3,12 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 import { appendCitySpots, getMergedCity } from "@/lib/cityStore";
 import { cities as seedCities } from "@/lib/data/cities";
+import { getCached, setCached, normalizeCacheKey } from "@/lib/aiCache";
 
 // Vercel 서버리스 함수 기본 제한시간(보통 10~15초)보다 웹검색 응답이 오래 걸릴 수 있어 명시적으로 늘려둠.
 export const maxDuration = 60;
+
+const CACHE_NAME = "city-refresh-cache";
 
 const SpotSchema = z.object({
   name: z.string().min(1),
@@ -14,6 +17,7 @@ const SpotSchema = z.object({
   notes: z.string().optional(),
 });
 const SpotsResponseSchema = z.array(SpotSchema);
+type SpotsResponse = z.infer<typeof SpotsResponseSchema>;
 
 function extractJson(text: string): unknown {
   const fenced = text.match(/```json\s*([\s\S]*?)```/);
@@ -29,6 +33,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
     return NextResponse.json({ error: "알 수 없는 도시입니다." }, { status: 404 });
   }
 
+  const current = getMergedCity(cityId)!;
+  const existingNames = current.spots.map((s) => `${s.category}:${s.name}`).join(", ") || "없음";
+
+  // 같은 기존 목록 상태에서 이미 조사한 적이 있으면(예: 실수로 두 번 클릭) API를 다시 호출하지 않고 캐시된 결과를 그대로 반영한다.
+  const cacheKey = normalizeCacheKey(cityId, existingNames);
+  const cached = getCached<SpotsResponse>(CACHE_NAME, cacheKey);
+  if (cached) {
+    const updated = appendCitySpots(cityId, cached);
+    return NextResponse.json({ city: updated, cached: true });
+  }
+
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -40,13 +55,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
     );
   }
 
-  const current = getMergedCity(cityId)!;
-  const existingNames = current.spots.map((s) => `${s.category}:${s.name}`).join(", ") || "없음";
-
   const prompt = `${seed.nameKo}(${seed.nameEn}) 여행 정보를 웹 검색으로 조사해줘.
-목표: 여행객에게 추천할 만한 "명소(attraction)" 최대 4곳, "점심(lunch)" 최대 2곳, "카페(cafe)" 최대 2곳, "저녁(dinner)" 최대 2곳을 찾아줘.
+목표: 여행객에게 추천할 만한 "명소(attraction)" 최대 3곳, "점심(lunch)" 최대 1곳, "카페(cafe)" 최대 1곳, "저녁(dinner)" 최대 1곳을 찾아줘.
 이미 알고 있는 곳(중복 제안 금지): ${existingNames}
-응답 속도가 중요하니 웹 검색은 최대 3~4번만 사용해줘. 각 장소가 실제로 존재하고 현재도 운영 중인지 간단히 확인한 뒤, 아래 형식의 JSON 배열만 응답해. 다른 설명 없이 마지막에 \`\`\`json 코드블록 하나로만 출력해.
+응답 속도와 비용이 중요하니 웹 검색은 최대 2~3번만 사용해줘. 각 장소가 실제로 존재하고 현재도 운영 중인지 간단히 확인한 뒤, 아래 형식의 JSON 배열만 응답해. 다른 설명 없이 마지막에 \`\`\`json 코드블록 하나로만 출력해.
 
 [
   { "name": "한국어 장소명 (영문/원어명)", "category": "attraction|lunch|cafe|dinner", "mapQuery": "구글맵 검색에 쓸 영문 질의어(장소명, 도시, 국가)", "notes": "한두 문장 설명" }
@@ -59,9 +71,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
   try {
     for (let iteration = 0; iteration < 2; iteration++) {
       const response = await client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 3000,
-        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 4 }],
+        model: "claude-haiku-4-5",
+        max_tokens: 2000,
+        tools: [{ type: "web_search_20260209", name: "web_search", max_uses: 3 }],
         messages,
       });
 
@@ -81,13 +93,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ cit
     return NextResponse.json({ error: message }, { status: 502 });
   }
 
-  let parsed: z.infer<typeof SpotsResponseSchema>;
+  let parsed: SpotsResponse;
   try {
     parsed = SpotsResponseSchema.parse(extractJson(finalText));
   } catch {
     return NextResponse.json({ error: "Claude 응답을 해석하지 못했습니다. 잠시 후 다시 시도해주세요.", raw: finalText }, { status: 502 });
   }
 
+  setCached(CACHE_NAME, cacheKey, parsed);
   const updated = appendCitySpots(cityId, parsed);
   return NextResponse.json({ city: updated });
 }
