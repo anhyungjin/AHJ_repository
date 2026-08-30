@@ -4,6 +4,15 @@ import { useState } from "react";
 import { countries, findCountry, CountryInfo } from "@/lib/data/countries";
 import { computeSuitability, SuitabilityResult, WeatherOutlook } from "@/lib/scoring";
 import { buildSkyscannerUrl, buildNaverFlightUrl } from "@/lib/flightLinks";
+import { getCitiesForCountry } from "@/lib/data/cities";
+import { allocateCities, buildItinerary } from "@/lib/cityPlanner";
+
+const CATEGORY_LABEL = { attraction: "명소", lunch: "점심", cafe: "카페", dinner: "저녁" } as const;
+
+function nightsBetween(start: string, end: string): number {
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  return Math.max(0, Math.round(ms / (1000 * 60 * 60 * 24)));
+}
 
 const WEEKDAYS = [
   { code: "mon", label: "월" },
@@ -245,6 +254,10 @@ export default function PlanPage() {
         </div>
       )}
 
+      {result && result.label !== "비추천" && submitted && (
+        <CityItinerarySection country={submitted.country} nights={nightsBetween(submitted.startDate, submitted.endDate)} />
+      )}
+
       {submitted?.dialysisRequired && (
         <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
           <h2 className="text-sm font-semibold text-neutral-800">투석 가능 병원 정보</h2>
@@ -299,5 +312,77 @@ export default function PlanPage() {
         </div>
       )}
     </main>
+  );
+}
+
+function CityItinerarySection({ country, nights }: { country: CountryInfo; nights: number }) {
+  const availableCities = getCitiesForCountry(country.code);
+
+  if (availableCities.length === 0) {
+    return (
+      <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
+        <p className="mt-2 text-sm text-neutral-600">
+          아직 {country.nameKo}의 도시별 상세 일정 데이터가 준비되지 않았습니다. 대표 도시인 {country.representativeCity.name}{" "}
+          중심으로 직접 계획해보시는 걸 추천합니다.
+        </p>
+      </div>
+    );
+  }
+
+  const allocations = allocateCities(availableCities, nights);
+  const itinerary = buildItinerary(allocations);
+
+  return (
+    <div className="mt-6 rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <h2 className="text-sm font-semibold text-neutral-800">도시 선정 및 일정</h2>
+      <p className="mt-1 text-xs text-neutral-500">
+        {nights}박 기준 추천 도시:{" "}
+        {allocations.map((a) => `${a.city.nameKo}(${a.nights}박)`).join(" → ")}. 아침은 숙소에서 해결하고, 점심·카페·저녁을
+        포함해 22시 전 숙소 복귀를 기준으로 짰습니다.
+      </p>
+
+      <div className="mt-4 space-y-4">
+        {itinerary.map((d) => (
+          <div key={d.day} className="rounded-lg border border-neutral-200 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-neutral-800">
+                Day {d.day} · {d.city.nameKo}
+              </span>
+              <a
+                href={d.googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-blue-700 hover:underline"
+              >
+                구글맵에서 동선 보기 ↗
+              </a>
+            </div>
+            <ul className="mt-2 space-y-1 text-sm text-neutral-700">
+              <li>🏨 아침: 숙소에서 해결</li>
+              {d.attractions.map((a, i) => (
+                <li key={i}>
+                  📍 {CATEGORY_LABEL.attraction}: {a.name}
+                </li>
+              ))}
+              <li>
+                🍽️ {CATEGORY_LABEL.lunch}: {d.lunch.name}
+              </li>
+              <li>
+                ☕ {CATEGORY_LABEL.cafe}: {d.cafe.name}
+              </li>
+              <li>
+                🌙 {CATEGORY_LABEL.dinner}: {d.dinner.name} (22시 전 숙소 복귀 목표)
+              </li>
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <p className="mt-3 text-xs text-neutral-400">
+        * 구글맵 링크는 새 탭에서 열리며, 본인 구글 계정으로 로그인된 브라우저라면 경로를 그대로 저장하거나 내 지도에 장소를
+        추가할 수 있습니다.
+      </p>
+    </div>
   );
 }
