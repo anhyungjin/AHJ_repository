@@ -8,12 +8,21 @@ export interface Spot {
   notes?: string;
 }
 
+export interface RecommendedLodging {
+  name: string;
+  area: string;
+  notes: string;
+  mapQuery: string;
+}
+
 export interface CityInfo {
   id: string;
   countryCode: string;
   nameKo: string;
   nameEn: string;
   spots: Spot[];
+  /** 배치로 미리 조사해둔, 이 도시의 명소 클러스터 기준 실제 숙소 추천 (정적 데이터, 런타임 API 호출 없음) */
+  recommendedLodging: RecommendedLodging[];
 }
 
 export const cities: CityInfo[] = [
@@ -33,6 +42,20 @@ export const cities: CityInfo[] = [
       { name: "아이비 플레이스 (다이칸야마)", category: "cafe", mapQuery: "Ivy Place Daikanyama, Tokyo, Japan", notes: "버터밀크 팬케이크 유명" },
       { name: "오모이데요코초 이자카야 골목 (신주쿠)", category: "dinner", mapQuery: "Omoide Yokocho, Shinjuku, Tokyo, Japan" },
     ],
+    recommendedLodging: [
+      {
+        name: "신주쿠 프린스 호텔",
+        area: "신주쿠",
+        notes: "세이부 신주쿠역 직결, JR 신주쿠역 도보 5분. 오모이데요코초·시내 각지 접근 좋음.",
+        mapQuery: "Shinjuku Prince Hotel, Tokyo, Japan",
+      },
+      {
+        name: "시부야 도큐 레이 호텔",
+        area: "시부야",
+        notes: "시부야 스크램블 교차로·이치란 라멘 도보권. 하라주쿠·다이칸야마 이동도 편함.",
+        mapQuery: "Shibuya Tokyu REI Hotel, Tokyo, Japan",
+      },
+    ],
   },
   {
     id: "osaka",
@@ -46,6 +69,20 @@ export const cities: CityInfo[] = [
       { name: "킨류라멘 (도톤보리)", category: "lunch", mapQuery: "Kinryu Ramen Dotonbori, Osaka, Japan" },
       { name: "신사이바시스지 상점가 카페거리", category: "cafe", mapQuery: "Shinsaibashi-suji Shopping Street, Osaka, Japan", notes: "특정 매장보다 상점가 내 여러 카페 중 선택" },
       { name: "야키젠 (오코노미야키/야끼소바, 도톤보리)", category: "dinner", mapQuery: "Dotonbori, Osaka, Japan (okonomiyaki restaurant Yakizen)" },
+    ],
+    recommendedLodging: [
+      {
+        name: "크로스 호텔 오사카",
+        area: "난바/도톤보리",
+        notes: "난바역 도보 5분, 도톤보리 중심가에 위치해 맛집·야경 접근이 가장 좋음.",
+        mapQuery: "Cross Hotel Osaka, Japan",
+      },
+      {
+        name: "호텔 비스타 오사카 난바",
+        area: "닛폰바시",
+        notes: "닛폰바시역 도보 5분, 도톤보리·구로몬시장 접근 편리, 조식 평가 좋음.",
+        mapQuery: "Hotel Vista Osaka Namba, Japan",
+      },
     ],
   },
   {
@@ -63,6 +100,20 @@ export const cities: CityInfo[] = [
       { name: "Make Me Mango (왓포 인근)", category: "cafe", mapQuery: "Make Me Mango, Maharat Road, Bangkok, Thailand" },
       { name: "아시아티크 리버프론트 야시장 식당가", category: "dinner", mapQuery: "Asiatique The Riverfront, Bangkok, Thailand" },
     ],
+    recommendedLodging: [
+      {
+        name: "프린스 팰리스 호텔 방콕",
+        area: "왕궁/카오산 인근",
+        notes: "운하변 위치, 왕궁·카오산로드와 가깝고 페리 서비스로 강변 이동도 편리.",
+        mapQuery: "Prince Palace Hotel Bangkok, Thailand",
+      },
+      {
+        name: "바이올렛 타워 앳 카오산 팰리스",
+        area: "카오산로드",
+        notes: "카오산로드 바로 인근, 왕궁까지 도보 약 13분.",
+        mapQuery: "Violet Tower at Khaosan Palace, Bangkok, Thailand",
+      },
+    ],
   },
   {
     id: "taipei",
@@ -76,6 +127,20 @@ export const cities: CityInfo[] = [
       { name: "딘타이펑 (본점)", category: "lunch", mapQuery: "Din Tai Fung Xinyi, Taipei, Taiwan" },
       { name: "융캉제 카페거리", category: "cafe", mapQuery: "Yongkang Street, Taipei, Taiwan", notes: "특정 매장보다 거리 내 카페 다수" },
       { name: "스린 야시장 (왕자치즈감자 등)", category: "dinner", mapQuery: "Shilin Night Market, Taipei, Taiwan" },
+    ],
+    recommendedLodging: [
+      {
+        name: "웨스트게이트 호텔 (西門町)",
+        area: "시먼딩",
+        notes: "MRT 시먼역 6번 출구 도보 1분. 야시장·번화가 접근 최고.",
+        mapQuery: "Westgate Hotel Taipei, Ximending, Taiwan",
+      },
+      {
+        name: "시먼딩 오렌지 호텔",
+        area: "시먼딩",
+        notes: "MRT 시먼역 1번 출구 도보 2분, 최근 리노베이션.",
+        mapQuery: "Orange Hotel Ximending, Taipei, Taiwan",
+      },
     ],
   },
   {
@@ -91,6 +156,20 @@ export const cities: CityInfo[] = [
       { name: "콩카페 (다낭)", category: "cafe", mapQuery: "Cong Caphe, Da Nang, Vietnam", notes: "연유커피(카페 쓰어다) 추천" },
       { name: "냐벱 (반쎄오·넴루이, 미케비치 인근)", category: "dinner", mapQuery: "My Khe Beach area restaurant Nha Bep, Da Nang, Vietnam" },
     ],
+    recommendedLodging: [
+      {
+        name: "골든 로터스 호텔",
+        area: "미케비치",
+        notes: "미케비치 도보 3분, 루프탑 수영장 보유.",
+        mapQuery: "Golden Lotus Hotel Da Nang, Vietnam",
+      },
+      {
+        name: "셀리나 호텔 앤 아파트먼트",
+        area: "미케비치",
+        notes: "미케비치 인근 가성비 숙소, 해변 산책에 최적.",
+        mapQuery: "Celina Hotel and Apartment Da Nang, Vietnam",
+      },
+    ],
   },
   {
     id: "hoian",
@@ -105,6 +184,20 @@ export const cities: CityInfo[] = [
       { name: "호이안 로스터리 (에그커피)", category: "cafe", mapQuery: "Hoi An Roastery, Vietnam" },
       { name: "호이안 야시장 먹거리", category: "dinner", mapQuery: "Hoi An Night Market, Vietnam" },
     ],
+    recommendedLodging: [
+      {
+        name: "아난타라 호이안 리조트",
+        area: "올드타운",
+        notes: "올드타운 도보 1분, 투본강변 리버사이드 리조트. 무료 조식·자전거 대여.",
+        mapQuery: "Anantara Hoi An Resort, Vietnam",
+      },
+      {
+        name: "리틀 리버사이드 호이안",
+        area: "올드타운 인근",
+        notes: "올드타운에서 약 1.7km, 강변 부티크 호텔.",
+        mapQuery: "Little Riverside Hoi An, Vietnam",
+      },
+    ],
   },
   {
     id: "singapore",
@@ -118,6 +211,20 @@ export const cities: CityInfo[] = [
       { name: "차이나타운 콤플렉스 호커센터 (딤섬/얌차)", category: "lunch", mapQuery: "Chinatown Complex Food Centre, Singapore" },
       { name: "야쿤 카야토스트 (차이나타운 본점)", category: "cafe", mapQuery: "Ya Kun Kaya Toast Chinatown, Singapore" },
       { name: "클락키 리버사이드 레스토랑 거리", category: "dinner", mapQuery: "Clarke Quay, Singapore" },
+    ],
+    recommendedLodging: [
+      {
+        name: "파라독스 싱가포르",
+        area: "클락키",
+        notes: "클락키역 바로 앞, 차이나타운 도보 10분. 웬만한 명소는 도보로 이동 가능.",
+        mapQuery: "Paradox Singapore, Clarke Quay, Singapore",
+      },
+      {
+        name: "홀리데이 인 익스프레스 싱가포르 클락키",
+        area: "클락키",
+        notes: "차이나타운 도보 10분, 마리나베이 도보 20분. 옥상 수영장 보유.",
+        mapQuery: "Holiday Inn Express Singapore Clarke Quay, Singapore",
+      },
     ],
   },
 ];

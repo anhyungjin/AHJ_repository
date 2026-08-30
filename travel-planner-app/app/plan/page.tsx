@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { countries, findCountry, CountryInfo } from "@/lib/data/countries";
 import { computeSuitability, SuitabilityResult, WeatherOutlook } from "@/lib/scoring";
 import { buildSkyscannerUrl, buildNaverFlightUrl } from "@/lib/flightLinks";
-import { CityInfo } from "@/lib/data/cities";
+import { CityInfo, getCitiesForCountry } from "@/lib/data/cities";
 import { allocateCities, buildItinerary, CityAllocation, recommendCityCount } from "@/lib/cityPlanner";
 import {
   buildBookingUrl,
@@ -103,6 +103,7 @@ export default function PlanPage() {
   const [flightTimes, setFlightTimes] = useState<FlightTimes | null>(null);
   const [ticketUploading, setTicketUploading] = useState(false);
   const [ticketError, setTicketError] = useState<string | null>(null);
+  const [planningMode, setPlanningMode] = useState<"manual" | "aiCourse">("manual");
 
   const nights = startDate && endDate && endDate >= startDate ? nightsBetween(startDate, endDate) : null;
 
@@ -439,18 +440,56 @@ export default function PlanPage() {
       )}
 
       {result && result.label !== "비추천" && submitted && (
-        <CityItinerarySection
-          country={submitted.country}
-          startDate={submitted.startDate}
-          nights={nightsBetween(submitted.startDate, submitted.endDate)}
-          adults={submitted.adults}
-          breakfastOnly={submitted.breakfastOnly}
-          priceTier={submitted.priceTier}
-          locationPref={submitted.locationPref}
-          flightTimes={flightTimes}
-          dialysisRequired={submitted.dialysisRequired}
-          dialysisDays={dialysisDays}
-        />
+        <div className="mt-6">
+          <div className="flex gap-2 border-b border-neutral-200">
+            <button
+              type="button"
+              onClick={() => setPlanningMode("manual")}
+              className={`px-4 py-2 text-sm font-medium ${
+                planningMode === "manual"
+                  ? "border-b-2 border-neutral-900 text-neutral-900"
+                  : "text-neutral-400 hover:text-neutral-600"
+              }`}
+            >
+              직접 숙소 예약
+            </button>
+            <button
+              type="button"
+              onClick={() => setPlanningMode("aiCourse")}
+              className={`px-4 py-2 text-sm font-medium ${
+                planningMode === "aiCourse"
+                  ? "border-b-2 border-neutral-900 text-neutral-900"
+                  : "text-neutral-400 hover:text-neutral-600"
+              }`}
+            >
+              AI 추천 코스
+            </button>
+          </div>
+
+          {planningMode === "manual" ? (
+            <CityItinerarySection
+              country={submitted.country}
+              startDate={submitted.startDate}
+              nights={nightsBetween(submitted.startDate, submitted.endDate)}
+              adults={submitted.adults}
+              breakfastOnly={submitted.breakfastOnly}
+              priceTier={submitted.priceTier}
+              locationPref={submitted.locationPref}
+              flightTimes={flightTimes}
+              dialysisRequired={submitted.dialysisRequired}
+              dialysisDays={dialysisDays}
+            />
+          ) : (
+            <AiRecommendedCourseSection
+              country={submitted.country}
+              startDate={submitted.startDate}
+              nights={nightsBetween(submitted.startDate, submitted.endDate)}
+              adults={submitted.adults}
+              dialysisRequired={submitted.dialysisRequired}
+              dialysisDays={dialysisDays}
+            />
+          )}
+        </div>
       )}
 
       {submitted?.dialysisRequired && (
@@ -987,6 +1026,169 @@ function CityItinerarySection({
       )}
         </>
       )}
+    </div>
+  );
+}
+
+/**
+ * 배치로 미리 조사해둔 정적 데이터(명소/맛집/카페/추천 숙소)만 사용하는 탭.
+ * 런타임에 Claude API를 전혀 호출하지 않아 즉시 결과가 나오고 비용도 들지 않는다.
+ */
+function AiRecommendedCourseSection({
+  country,
+  startDate,
+  nights,
+  adults,
+  dialysisRequired,
+  dialysisDays,
+}: {
+  country: CountryInfo;
+  startDate: string;
+  nights: number;
+  adults: number;
+  dialysisRequired: boolean;
+  dialysisDays: string[];
+}) {
+  const cities = getCitiesForCountry(country.code);
+
+  if (cities.length === 0) {
+    return (
+      <div className="mt-4 rounded-b-xl rounded-tr-xl border border-neutral-200 bg-white p-6 shadow-sm">
+        <p className="text-sm text-neutral-600">
+          아직 {country.nameKo}의 배치 데이터가 준비되지 않았습니다. &quot;직접 숙소 예약&quot; 탭을 이용해주세요.
+        </p>
+      </div>
+    );
+  }
+
+  const allocations = allocateCities(cities, nights);
+  const itinerary = buildItinerary(allocations);
+
+  const cityStays: { allocation: CityAllocation<CityInfo>; checkIn: string; checkOut: string }[] = [];
+  {
+    let cursor = startDate;
+    for (const allocation of allocations) {
+      const checkIn = cursor;
+      const checkOut = addDays(cursor, allocation.nights);
+      cityStays.push({ allocation, checkIn, checkOut });
+      cursor = checkOut;
+    }
+  }
+
+  const dialysisDatesByCity: Record<string, string[]> = {};
+  if (dialysisRequired && dialysisDays.length > 0) {
+    for (const { allocation, checkIn, checkOut } of cityStays) {
+      const dates: string[] = [];
+      for (let d = checkIn; d < checkOut; d = addDays(d, 1)) {
+        if (dialysisDays.includes(weekdayCode(d))) dates.push(d);
+      }
+      if (dates.length > 0) dialysisDatesByCity[allocation.city.id] = dates;
+    }
+  }
+
+  return (
+    <div className="mt-4 space-y-4 rounded-b-xl rounded-tr-xl border border-neutral-200 bg-white p-6 shadow-sm">
+      <div>
+        <h2 className="text-sm font-semibold text-neutral-800">AI가 판단한 추천 코스</h2>
+        <p className="mt-1 text-xs text-neutral-500">
+          미리 조사해둔 배치 데이터를 기반으로 {nights}박 최적 코스를 자동으로 짰습니다:{" "}
+          {allocations.map((a) => `${a.city.nameKo}(${a.nights}박)`).join(" → ")}. 실시간 API 호출 없이 즉시 계산됩니다.
+        </p>
+      </div>
+
+      <div className="space-y-4">
+        {itinerary.map((d) => (
+          <div key={d.day} className="rounded-lg border border-neutral-200 p-4">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-semibold text-neutral-800">
+                Day {d.day} · {d.city.nameKo}
+              </span>
+              <a
+                href={d.googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs font-medium text-blue-700 hover:underline"
+              >
+                구글맵에서 동선 보기 ↗
+              </a>
+            </div>
+            <ul className="mt-2 space-y-1 text-sm text-neutral-700">
+              <li>🏨 아침: 숙소에서 해결</li>
+              {d.morningAttraction && <li>📍 명소: {d.morningAttraction.name}</li>}
+              <li>🍽️ 점심: {d.lunch.name}</li>
+              <li>☕ 카페: {d.cafe.name}</li>
+              {d.afternoonAttraction && <li>📍 명소: {d.afternoonAttraction.name}</li>}
+              <li>🌙 저녁: {d.dinner.name} (22시 전 숙소 복귀 목표)</li>
+            </ul>
+          </div>
+        ))}
+      </div>
+
+      <div className="border-t border-neutral-200 pt-4">
+        <h3 className="text-sm font-semibold text-neutral-800">이 코스에 맞는 추천 숙소</h3>
+        <p className="mt-1 text-xs text-neutral-500">
+          위 코스의 명소 클러스터에서 가까운 실제 숙소를 미리 조사해뒀습니다. 마음에 드는 곳을 눌러 시세를 확인하세요.
+        </p>
+        <div className="mt-3 space-y-3">
+          {cityStays.map(({ allocation, checkIn, checkOut }) => (
+            <div key={allocation.city.id} className="rounded-lg border border-neutral-200 p-3">
+              <p className="text-sm font-medium text-neutral-800">
+                {allocation.city.nameKo} ({checkIn} ~ {checkOut}, {allocation.nights}박)
+              </p>
+              <div className="mt-2 space-y-2">
+                {allocation.city.recommendedLodging.map((lodging, i) => {
+                  const searchInput = {
+                    cityQuery: lodging.mapQuery,
+                    checkIn,
+                    checkOut,
+                    adults,
+                    breakfastOnly: false,
+                    priceTier: "10to20" as PriceTier,
+                  };
+                  return (
+                    <div key={i} className="flex flex-wrap items-center justify-between gap-2 rounded-md bg-neutral-50 p-2">
+                      <div>
+                        <p className="text-sm text-neutral-800">
+                          {lodging.name} <span className="text-xs text-neutral-500">· {lodging.area}</span>
+                        </p>
+                        <p className="text-xs text-neutral-500">{lodging.notes}</p>
+                      </div>
+                      <div className="flex gap-2">
+                        <a
+                          href={buildBookingUrl(searchInput)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-800 hover:bg-white"
+                        >
+                          부킹닷컴 →
+                        </a>
+                        <a
+                          href={buildAgodaUrl(searchInput)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="rounded-md border border-neutral-300 px-2 py-1 text-xs font-medium text-neutral-800 hover:bg-white"
+                        >
+                          아고다 →
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {dialysisDatesByCity[allocation.city.id] && (
+                <p className="mt-2 text-xs text-amber-600">
+                  ⚠ 투석 필요일(
+                  {dialysisDatesByCity[allocation.city.id]
+                    .map((d) => `${d}(${WEEKDAYS.find((w) => w.code === weekdayCode(d))?.label})`)
+                    .join(", ")}
+                  )이 이 숙박 기간에 포함됩니다. 아래 &quot;투석 가능 병원 정보&quot;를 참고해 위 숙소와의 거리를 미리
+                  확인하고 예약해주세요.
+                </p>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
