@@ -1,36 +1,33 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 해외 여행 플래너
 
-## Getting Started
+여행 국가/일정을 입력하면 아래를 순서대로 확인할 수 있는 앱입니다.
 
-First, run the development server:
+1. **여행 적합도 확인** (`/plan`) — 추천 여행월, 단기 일기예보(Open-Meteo), 필요 시 투석 의료 여건을 기준으로 0~100점 적합도 계산
+2. **항공권** — 스카이스캐너 / 네이버 항공권 검색 결과로 바로 이동하는 딥링크 (인천 출발 기준)
+3. **투석 가능 병원** — 웹 검색으로 조사한 병원/클리닉 정보와 통역 지원 여부 (선택 시)
+4. **도시 선정 및 일정** — 숙박일수 기준 추천 도시, 일자별 아침/명소/점심/카페/명소/저녁 일정, 구글맵 동선 링크
+5. **도시 정보 업데이트** — Claude API(web search)로 명소/맛집을 추가 조사해 기존 데이터와 병합 (중복 없음)
+
+## 실행
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 환경 변수
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+"도시 정보 업데이트" 기능(4번)을 쓰려면 `.env.local`에 아래 값이 필요합니다. 없어도 나머지 기능은 정상 동작합니다.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
 
-## Learn More
+Vercel에 배포할 때는 Project Settings → Environments 에서 같은 이름으로 등록하면 됩니다.
 
-To learn more about Next.js, take a look at the following resources:
+## 로드맵
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- ✅ 1단계 — 여행 적합도 판단
+- ✅ 2단계 — 항공권 딥링크, 투석 병원 정보
+- ✅ 3단계 — 도시 선정 및 일정, Claude 기반 정보 업데이트
+- ⏳ 4단계 — 숙소 시세 조회 (조식/가격대/위치 조건)
